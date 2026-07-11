@@ -72,6 +72,18 @@
     "source_revision": "9edcd58346fbffa46f6735637f91ae24dfabcb74"
   },
   {
+    "slug": "mvsfunc",
+    "display_name": "mvsfunc",
+    "runtime_kind": "package",
+    "import_name": "mvsfunc",
+    "install_path": "mvsfunc",
+    "source_root": "scripts/mvsfunc",
+    "runtime_source": "scripts/mvsfunc/mvsfunc",
+    "user_source_url": "https://github.com/HomeOfVapourSynthEvolution/mvsfunc",
+    "canonical_source_url": "https://github.com/HomeOfVapourSynthEvolution/mvsfunc",
+    "source_revision": "865c7486ca860d323754ec4774bc4cca540a7076"
+  },
+  {
     "slug": "muvsfunc",
     "display_name": "muvsfunc",
     "runtime_kind": "module",

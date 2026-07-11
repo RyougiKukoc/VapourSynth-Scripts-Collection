@@ -5,6 +5,8 @@ actual script sources are vendored under `scripts/<name>/`.
 
 Licensing is mixed:
 
+- `mvsfunc` is vendored as a full upstream package, but the GitHub API did not
+  expose an SPDX license identifier for the repository.
 - `yvsfunc` includes its upstream `COPYING` file and reports SPDX `WTFPL`.
 - The GitHub API did not expose a repository license for several of the
   single-file sources bundled here.

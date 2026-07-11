@@ -19,6 +19,7 @@ import fvsfunc
 import getfnative
 import havsfunc
 import kagefunc
+import mvsfunc
 import muvsfunc
 import nnedi3_resample
 import nnedi3_rpow2
@@ -43,6 +44,7 @@ import yvsfunc
 - `nnedi3_rpow2`
 - `havsfunc`
 - `getfnative`
+- `mvsfunc`
 - `muvsfunc`
 - `fvsfunc`
 - `vsTAAmbk`
@@ -54,11 +56,11 @@ import yvsfunc
 `vs-collection-rk` installs `VapourSynth`, `vsutil`, and `matplotlib`
 automatically, because some bundled modules import them at module import time.
 
-Several bundled scripts also import `mvsfunc`, but no PyPI distribution was
-found for `mvsfunc` during bootstrap. That means `mvsfunc` still needs to be
-available in the target environment by some other route if you want to import
-modules such as `havsfunc`, `nnedi3_resample`, `muvsfunc`, `vsTAAmbk`, or
-`kagefunc`.
+`mvsfunc` is bundled directly inside this collection rather than being pulled as
+an external dependency. This keeps `pip install "vs-collection-rk @ git+..."`
+self-contained even though upstream `mvsfunc` currently ships a classic
+`setup.py` + `requirements.txt` layout and no PyPI distribution was available
+during bootstrap.
 
 The collection does not try to normalize runtime plugin requirements. If an
 upstream script expects plugins like `fmtc`, `nnedi3`, `znedi3`, `nnedi3cl`,
