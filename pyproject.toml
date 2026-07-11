@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling>=1.30"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vs-collection-rk"
+version = "0.1.0"
+description = "Curated VapourSynth script collection with preserved per-script provenance"
+readme = "README.md"
+license = { text = "Mixed upstream licensing; see THIRD_PARTY.md and scripts/*/provenance.toml." }
+license-files = ["THIRD_PARTY.md", "scripts/**/COPYING", "scripts/**/LICENSE*"]
+requires-python = ">=3.12"
+authors = [{ name = "RyougiKukoc" }]
+dependencies = ["VapourSynth>=77", "vsutil>=0.8.0", "matplotlib>=3.8"]
+
+[project.urls]
+"Source Code" = "https://github.com/RyougiKukoc/VapourSynth-Scripts-Collection"
+
+[tool.hatch.build.targets.sdist]
+include = ["README.md", "THIRD_PARTY.md", "hatch_build.py", "pyproject.toml", "scripts", "src", "tools"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vs_collection_rk"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
