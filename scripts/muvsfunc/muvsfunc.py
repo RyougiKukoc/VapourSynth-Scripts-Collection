@@ -72,6 +72,7 @@ Functions:
 from collections import abc
 import functools
 import fractions
+import importlib
 import itertools
 import math
 import numbers
@@ -96,6 +97,45 @@ _has_lexpr_lutspa: bool = (
     hasattr(core, "akarin") and
     b'X' in core.akarin.Version()["expr_features"]
 )
+
+_DFTTEST2_UNSET = object()
+_dfttest2_module: Any = _DFTTEST2_UNSET
+
+
+def _get_dfttest2() -> Any:
+    global _dfttest2_module
+    if _dfttest2_module is _DFTTEST2_UNSET:
+        try:
+            _dfttest2_module = importlib.import_module("dfttest2")
+        except ModuleNotFoundError:
+            _dfttest2_module = None
+    return _dfttest2_module
+
+
+def _dfttest_preferring_dfttest2(clip: vs.VideoNode, **kwargs: Any) -> vs.VideoNode:
+    dfttest2 = _get_dfttest2()
+    call_kwargs = {key: value for key, value in kwargs.items() if value is not None}
+    sbsize = int(call_kwargs.get("sbsize", 16))
+    tbsize = int(call_kwargs.get("tbsize", 3))
+    cpu_shape = sbsize == 16 and tbsize in (1, 3, 5, 7)
+
+    if dfttest2 is not None:
+        if cpu_shape:
+            if hasattr(core, "dfttest2_nvrtc"):
+                backend = dfttest2.Backend.NVRTC
+            elif hasattr(core, "dfttest2_cpu"):
+                backend = dfttest2.Backend.CPU
+            else:
+                backend = None
+        elif hasattr(core, "dfttest2_cuda"):
+            backend = dfttest2.Backend.cuFFT
+        else:
+            backend = None
+
+        if backend is not None:
+            return dfttest2.DFTTest(clip, backend=backend, **call_kwargs)
+
+    return clip.dfttest.DFTTest(**call_kwargs)
 
 # Type aliases
 PlanesType = Optional[Union[int, Sequence[int]]]
@@ -717,8 +757,8 @@ def _GF3_dfttest(src: vs.VideoNode, ref: vs.VideoNode, radius: int,
                  thr: float, elast: float, planes: PlanesType
                  ) -> vs.VideoNode:
     hrad = max(radius * 3 // 4, 1)
-    last = core.dfttest.DFTTest(src, sigma=hrad * thr * thr * 32, sbsize=hrad * 4,
-                                sosize=hrad * 3, tbsize=1, planes=planes)
+    last = _dfttest_preferring_dfttest2(src, sigma=hrad * thr * thr * 32, sbsize=hrad * 4,
+                                        sosize=hrad * 3, tbsize=1, planes=planes)
     last = mvf.LimitFilter(last, ref, thr=thr, elast=elast, planes=planes)
 
     return last
@@ -2706,7 +2746,7 @@ def dfttestMC(input: vs.VideoNode, pp: Optional[vs.VideoNode] = None, mc: int = 
     mc = min(max(int(mc), 0), 5)
 
     if mc == 0:
-        return core.dfttest.DFTTest(input, sigma=sigma, sbsize=sbsize, sosize=sosize, tbsize=tbsize, **dfttest_params)
+        return _dfttest_preferring_dfttest2(input, sigma=sigma, sbsize=sbsize, sosize=sosize, tbsize=tbsize, **dfttest_params)
     else:
         if pp is not None:
             if not isinstance(pp, vs.VideoNode):
@@ -2781,7 +2821,7 @@ def dfttestMC(input: vs.VideoNode, pp: Optional[vs.VideoNode] = None, mc: int = 
         interleaved = core.std.Interleave(fclips[::-1] + [degrained] + bclips)
 
         # Perform dfttest.
-        filtered = core.dfttest.DFTTest(
+        filtered = _dfttest_preferring_dfttest2(
             interleaved, sigma=sigma, sbsize=sbsize, sosize=sosize, tbsize=tbsize, **dfttest_params)
 
         return core.std.SelectEvery(filtered, mc * 2 + 1, mc)
@@ -7442,7 +7482,7 @@ def haf_LSFmod(input, strength=None, Smode=None, Smethod=None, kernel=11, preblu
         pre = tmp
     elif preblur >= 3:
         expr = 'x {i} < {peak} x {j} > 0 {peak} x {i} - {peak} {j} {i} - / * - ? ?'.format(i=scale(16, peak), j=scale(75, peak), peak=peak)
-        pre = core.std.MaskedMerge(tmp.dfttest.DFTTest(tbsize=1, slocation=[0.0,4.0, 0.2,9.0, 1.0,15.0]), tmp, tmp.std.Expr(expr=[expr]))
+        pre = core.std.MaskedMerge(_dfttest_preferring_dfttest2(tmp, tbsize=1, slocation=[0.0,4.0, 0.2,9.0, 1.0,15.0]), tmp, tmp.std.Expr(expr=[expr]))
     else:
         pre = haf_MinBlur(tmp, r=preblur)
 
