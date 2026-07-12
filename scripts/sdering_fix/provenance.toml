@@ -12,5 +12,5 @@ source_revision = "257d981098f67479bf029acda0fdeffa7c38ee08"
 source_updated_at = "2022-12-25T12:02:10Z"
 license_spdx = ""
 license_name = ""
-notes = "Collected from the user-supplied gist snapshot. If this gist was itself derived from another upstream repository, that earlier link should be filled in manually when it becomes known."
+notes = "Collected from the original gist URL listed above."
 source_files = ["sdering_fix.py"]

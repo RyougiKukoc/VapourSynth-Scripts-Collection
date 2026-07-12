@@ -56,8 +56,8 @@ import yvsfunc
 
 The repository now keeps two provenance layers on purpose:
 
-- `SOURCES.md` lists every bundled script, its import name, the user-supplied
-  fetch URL, the canonical upstream URL, and the vendored revision.
+- `SOURCES.md` lists every bundled script, its import name, the vendored
+  source URL, the canonical upstream URL, and the vendored revision.
 - `scripts/<name>/provenance.toml` keeps the same data next to the vendored
   source so later updates can preserve the modification chain.
 
@@ -65,18 +65,18 @@ Quick source summary:
 
 | Script | Import | Origin summary |
 | --- | --- | --- |
-| `sdering_fix` | `sdering_fix` | User-supplied gist snapshot |
+| `sdering_fix` | `sdering_fix` | Original gist `RyougiKukoc/c3832d96a8dce6f609f6e29888af94a6` |
 | `CSMOD` | `CSMOD` | Single file from `fdar0536/VapourSynth-Contra-Sharpen-mod` |
 | `nnedi3_resample` | `nnedi3_resample` | Single file from `HomeOfVapourSynthEvolution/nnedi3_resample` |
-| `nnedi3_rpow2` | `nnedi3_rpow2` | User-supplied gist snapshot |
-| `havsfunc` | `havsfunc` | User-supplied gist snapshot |
+| `nnedi3_rpow2` | `nnedi3_rpow2` | Original gist `4re/342624c9e1a144a696c6`, vendored from a later fork snapshot |
+| `havsfunc` | `havsfunc` | Original gist `RyougiKukoc/ea451bd51d0dc33ba5e0c4d5566653cf` |
 | `getfnative` | `getfnative` | Single file from `YomikoR/GetFnative` |
 | `mvsfunc` | `mvsfunc` | Full vendored package from `HomeOfVapourSynthEvolution/mvsfunc` |
 | `muvsfunc` | `muvsfunc` | Single file from `WolframRhodium/muvsfunc` |
 | `fvsfunc` | `fvsfunc` | Single file from `Irrational-Encoding-Wizardry/fvsfunc` |
 | `TAAmbk` | `vsTAAmbk` | Single file from `HomeOfVapourSynthEvolution/vsTAAmbk` |
 | `kagefunc` | `kagefunc` | Single file from `Irrational-Encoding-Wizardry/kagefunc` |
-| `yvsfunc` | `yvsfunc` | Full vendored package from `RyougiKukoc/yvsfunc-vcs` |
+| `yvsfunc` | `yvsfunc` | Full vendored package from `YomikoR/yvsfunc` |
 
 For the exact per-script links and revisions, see [SOURCES.md](./SOURCES.md).
 
@@ -97,11 +97,10 @@ and so on, those plugin-side requirements still apply.
 
 ## Provenance
 
-Each script folder keeps the exact user-specified entry URL plus the canonical
-GitHub or gist URL, an upstream revision marker, and any detected license
-metadata in `provenance.toml`.
+Each script folder keeps the vendored source URL, the canonical GitHub or gist
+URL, an upstream revision marker, and any detected license metadata in
+`provenance.toml`.
 
-For the scripts collected from user gists, the gist snapshot is preserved as the
-authoritative fetch source. If a gist was itself derived from another upstream
-repository, that earlier link can be added later without changing the runtime
-layout.
+For gist-backed scripts, the vendored gist URL is recorded together with a
+canonical original gist URL when GitHub exposes a fork relationship. This keeps
+the modification chain visible without hiding the upstream origin.

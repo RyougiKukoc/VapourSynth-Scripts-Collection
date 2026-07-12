@@ -44,7 +44,7 @@
     "source_root": "scripts/nnedi3_rpow2",
     "runtime_source": "scripts/nnedi3_rpow2/nnedi3_rpow2.py",
     "user_source_url": "https://gist.github.com/RyougiKukoc/6c9225aa3f010ef65d341cc5f770cf23",
-    "canonical_source_url": "https://gist.github.com/RyougiKukoc/6c9225aa3f010ef65d341cc5f770cf23",
+    "canonical_source_url": "https://gist.github.com/4re/342624c9e1a144a696c6",
     "source_revision": "4e6c2fac9d3159f1f1c93e2a92d492ce7b69b1b3"
   },
   {
@@ -140,7 +140,7 @@
     "source_root": "scripts/yvsfunc",
     "runtime_source": "scripts/yvsfunc/yvsfunc",
     "user_source_url": "https://github.com/RyougiKukoc/yvsfunc-with-toml.git",
-    "canonical_source_url": "https://github.com/RyougiKukoc/yvsfunc-vcs",
+    "canonical_source_url": "https://github.com/YomikoR/yvsfunc",
     "source_revision": "ee3309efe2543c6680619f6deb64496102e7eb64"
   }
 ]
