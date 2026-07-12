@@ -20,3 +20,5 @@ redistribution posture.
 The collection keeps provenance metadata intentionally close to each vendored
 script so later license or authorship clarifications can be applied without
 guessing where a file came from.
+
+For a repository-level per-script source index, see [`SOURCES.md`](./SOURCES.md).

@@ -35,6 +35,7 @@ import yvsfunc
 - `src/vs_collection_rk/` exposes a tiny metadata package for introspection.
 - `hatch_build.py` stages the bundled scripts into their original import paths
   during wheel builds.
+- `SOURCES.md` is the human-readable per-script provenance index.
 
 ## Bundled Scripts
 
@@ -50,6 +51,34 @@ import yvsfunc
 - `vsTAAmbk`
 - `kagefunc`
 - `yvsfunc`
+
+## Script Origins
+
+The repository now keeps two provenance layers on purpose:
+
+- `SOURCES.md` lists every bundled script, its import name, the user-supplied
+  fetch URL, the canonical upstream URL, and the vendored revision.
+- `scripts/<name>/provenance.toml` keeps the same data next to the vendored
+  source so later updates can preserve the modification chain.
+
+Quick source summary:
+
+| Script | Import | Origin summary |
+| --- | --- | --- |
+| `sdering_fix` | `sdering_fix` | User-supplied gist snapshot |
+| `CSMOD` | `CSMOD` | Single file from `fdar0536/VapourSynth-Contra-Sharpen-mod` |
+| `nnedi3_resample` | `nnedi3_resample` | Single file from `HomeOfVapourSynthEvolution/nnedi3_resample` |
+| `nnedi3_rpow2` | `nnedi3_rpow2` | User-supplied gist snapshot |
+| `havsfunc` | `havsfunc` | User-supplied gist snapshot |
+| `getfnative` | `getfnative` | Single file from `YomikoR/GetFnative` |
+| `mvsfunc` | `mvsfunc` | Full vendored package from `HomeOfVapourSynthEvolution/mvsfunc` |
+| `muvsfunc` | `muvsfunc` | Single file from `WolframRhodium/muvsfunc` |
+| `fvsfunc` | `fvsfunc` | Single file from `Irrational-Encoding-Wizardry/fvsfunc` |
+| `TAAmbk` | `vsTAAmbk` | Single file from `HomeOfVapourSynthEvolution/vsTAAmbk` |
+| `kagefunc` | `kagefunc` | Single file from `Irrational-Encoding-Wizardry/kagefunc` |
+| `yvsfunc` | `yvsfunc` | Full vendored package from `RyougiKukoc/yvsfunc-vcs` |
+
+For the exact per-script links and revisions, see [SOURCES.md](./SOURCES.md).
 
 ## Dependency Notes
 
