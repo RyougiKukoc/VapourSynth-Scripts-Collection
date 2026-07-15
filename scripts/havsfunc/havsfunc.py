@@ -60,6 +60,7 @@ Utility functions:
 """
 
 from __future__ import annotations
+import inspect
 import importlib
 
 import math
@@ -1146,7 +1147,7 @@ def HQDeringmod(
 QTGMC_globals = {}
 
 
-def QTGMC(
+def _legacy_QTGMC(
     Input: vs.VideoNode,
     Preset: str = 'Slower',
     TR0: Optional[int] = None,
@@ -2050,7 +2051,7 @@ def QTGMC(
     if SourceMatch <= 0:
         match = repair1
     else:
-        match = QTGMC_ApplySourceMatch(
+        match = _legacy_QTGMC_ApplySourceMatch(
             repair1,
             InputType,
             ediInput,
@@ -2090,7 +2091,7 @@ def QTGMC(
     # This mode will not give a true lossless result because the resharpening and final temporal smooth are still to come, but it will add further detail
     # However, it can introduce minor combing. This setting is best used together with source-match (it's effectively the final source-match stage)
     if Lossless >= 2:
-        lossed1 = QTGMC_MakeLossless(match, innerClip, InputType, TFF)
+        lossed1 = _legacy_QTGMC_MakeLossless(match, innerClip, InputType, TFF)
     else:
         lossed1 = match
 
@@ -2189,7 +2190,7 @@ def QTGMC(
     # Lossless=1 - inject source fields into result and clean up inevitable artefacts. Provided NoiseRestore=0.0 or 1.0, this mode will make the script result
     # properly lossless, but this will retain source artefacts and cause some combing (where the smoothed deinterlace doesn't quite match the source)
     if Lossless == 1:
-        lossed2 = QTGMC_MakeLossless(sharpLimit2, innerClip, InputType, TFF)
+        lossed2 = _legacy_QTGMC_MakeLossless(sharpLimit2, innerClip, InputType, TFF)
     else:
         lossed2 = sharpLimit2
 
@@ -2449,7 +2450,7 @@ def QTGMC_Generate2ndFieldNoise(Input: vs.VideoNode, InterleavedClip: vs.VideoNo
     return Weave(core.std.Interleave([origNoise, newNoise]), tff=TFF)
 
 
-def QTGMC_MakeLossless(Input: vs.VideoNode, Source: vs.VideoNode, InputType: int, TFF: Optional[bool] = None) -> vs.VideoNode:
+def _legacy_QTGMC_MakeLossless(Input: vs.VideoNode, Source: vs.VideoNode, InputType: int, TFF: Optional[bool] = None) -> vs.VideoNode:
     '''
     Insert the source lines into the result to create a true lossless output. However, the other lines in the result have had considerable processing and won't
     exactly match source lines. There will be some slight residual combing. Use vertical medians to clean a little of this away
@@ -2480,7 +2481,7 @@ def QTGMC_MakeLossless(Input: vs.VideoNode, Source: vs.VideoNode, InputType: int
     return Weave(core.std.Interleave([srcFields, core.std.MakeDiff(newFields, vmNewDiff3)]).std.SelectEvery(cycle=4, offsets=[0, 1, 3, 2]), tff=TFF)
 
 
-def QTGMC_ApplySourceMatch(
+def _legacy_QTGMC_ApplySourceMatch(
     Deinterlace: vs.VideoNode,
     InputType: int,
     Source: vs.VideoNode,
@@ -3539,7 +3540,7 @@ def LUTDeRainbow(input, cthresh=10, ythresh=10, y=True, linkUV=True, mask=False)
 # Original script by g-force converted into a stand alone script by McCauley #
 # latest version from December 10, 2008                                      #
 ##############################################################################
-def Stab(clp, dxmax=4, dymax=4, mirror=0):
+def _legacy_Stab(clp, dxmax=4, dymax=4, mirror=0):
     if not isinstance(clp, vs.VideoNode):
         raise vs.Error('Stab: this is not a clip')
 
@@ -3855,7 +3856,7 @@ def GSMC(input, p=None, Lmask=None, nrmode=None, radius=1, adapt=-1, rep=13, pla
 ### +-------------+----------------------+----------------------+----------------------+----------------------+----------------------+
 ###
 ####################################################################################################################################
-def MCTemporalDenoise(i, radius=None, pfMode=3, sigma=None, twopass=None, useTTmpSm=False, limit=None, limit2=None, post=0, chroma=None, refine=False, deblock=False, useQED=None, quant1=None,
+def _legacy_MCTemporalDenoise(i, radius=None, pfMode=3, sigma=None, twopass=None, useTTmpSm=False, limit=None, limit2=None, post=0, chroma=None, refine=False, deblock=False, useQED=None, quant1=None,
                       quant2=None, edgeclean=False, ECrad=None, ECthr=None, stabilize=None, maxr=None, TTstr=None, bwbh=None, owoh=None, blksize=None, overlap=None, bt=None, ncpu=1, thSAD=None,
                       thSADC=None, thSAD2=None, thSADC2=None, thSCD1=None, thSCD2=None, truemotion=False, MVglobal=True, pel=None, pelsearch=None, search=4, searchparam=2, MVsharp=None, DCT=0, p=None,
                       settings='low'):
@@ -4186,7 +4187,7 @@ def MCTemporalDenoise(i, radius=None, pfMode=3, sigma=None, twopass=None, useTTm
 # Globals
 bv6 = bv4 = bv3 = bv2 = bv1 = fv1 = fv2 = fv3 = fv4 = fv6 = None
 
-def SMDegrain(input, tr=2, thSAD=300, thSADC=None, RefineMotion=False, contrasharp=None, CClip=None, interlaced=False, tff=None, plane=4, Globals=0, pel=None, subpixel=2, prefilter=-1, mfilter=None,
+def _legacy_SMDegrain(input, tr=2, thSAD=300, thSADC=None, RefineMotion=False, contrasharp=None, CClip=None, interlaced=False, tff=None, plane=4, Globals=0, pel=None, subpixel=2, prefilter=-1, mfilter=None,
               blksize=None, overlap=None, search=4, truemotion=None, MVglobal=None, dct=0, limit=255, limitc=None, thSCD1=400, thSCD2=130, chroma=True, hpad=None, vpad=None, Str=1.0, Amp=0.0625):
     if not isinstance(input, vs.VideoNode):
         raise vs.Error('SMDegrain: this is not a clip')
@@ -6524,3 +6525,1127 @@ def scale(value, peak):
 # sin(pi x / 2) for -1 < x < 1 using Taylor series
 def sine_expr(var):
     return f'{-3.5988432352121e-6} {var} * {var} * {0.00016044118478736} + {var} * {var} * {-0.0046817541353187} + {var} * {var} * {0.079692626246167} + {var} * {var} * {-0.64596409750625} + {var} * {var} * {1.5707963267949} + {var} *'
+
+
+# === MVUTENSILS MERGED LAYER ===
+
+
+def scd2_old_to_new(value: float | int) -> float:
+    return float(value) * 100.0 / 256.0
+
+
+def search_old_to_new(value: int | None) -> int | None:
+    if value is None:
+        return None
+    table = {
+        2: 0,
+        3: 1,
+        4: 2,
+        5: 3,
+        6: 4,
+        7: 5,
+    }
+    if value not in table:
+        raise ValueError(f"mvutensils has no exact equivalent for mvtools search={value}")
+    return table[value]
+
+
+def rfilter_old_to_new(value: int | None) -> int | None:
+    if value is None:
+        return None
+    table = {
+        0: 0,
+        2: 1,
+        4: 2,
+    }
+    if value not in table:
+        raise ValueError(f"mvutensils has no exact equivalent for mvtools rfilter={value}")
+    return table[value]
+
+
+def dct_old_to_satd(value: int | None) -> bool | None:
+    if value is None:
+        return None
+    if value == 0:
+        return False
+    if value == 5:
+        return True
+    raise ValueError(f"mvutensils has no exact equivalent for mvtools dct={value}")
+
+
+def delta_old_to_new(isb: bool, delta: int) -> int:
+    return abs(delta) if isb else -abs(delta)
+
+
+def analyse_truemotion_defaults(truemotion: bool) -> dict[str, Any]:
+    if truemotion:
+        return {
+            "mvlambda": 1000,
+            "lsad": 1200,
+            "plevel": 1,
+            "globalmv": True,
+            "pnew": 50,
+        }
+    return {
+        "mvlambda": 0,
+        "lsad": 400,
+        "plevel": 0,
+        "globalmv": False,
+        "pnew": 0,
+    }
+
+
+def recalculate_truemotion_defaults(truemotion: bool) -> dict[str, Any]:
+    if truemotion:
+        return {
+            "mvlambda": 1000,
+            "pnew": 50,
+        }
+    return {
+        "mvlambda": 0,
+        "pnew": 0,
+    }
+
+
+def plane_to_planes(plane: int, clip: vs.VideoNode | None = None) -> list[int]:
+    if clip is not None and clip.format.color_family == vs.GRAY:
+        return [0]
+    table = {
+        0: [0],
+        1: [1],
+        2: [2],
+        3: [1, 2],
+        4: [0, 1, 2],
+    }
+    if plane not in table:
+        raise ValueError(f"Unsupported mvtools plane selector: {plane}")
+    return table[plane]
+
+
+def _maybe_assign(mapping: dict[str, Any], key: str, value: Any) -> None:
+    if value is not None:
+        mapping[key] = value
+
+
+def super_clip(
+    core: vs.Core,
+    clip: vs.VideoNode,
+    *,
+    blksize: int,
+    overlap: int,
+    hpad: int | None = 16,
+    vpad: int | None = 16,
+    pel: int | None = 2,
+    levels: int = 0,
+    sharp: int | None = 2,
+    rfilter: int | None = 2,
+    pelclip: vs.VideoNode | None = None,
+    chroma: bool | None = None,
+) -> vs.VideoNode:
+    kwargs: dict[str, Any] = {
+        "blksize": blksize,
+        "overlap": overlap,
+        "onelevel": levels == 1,
+    }
+    if hpad is not None or vpad is not None:
+        pad_h = 16 if hpad is None else max(1, hpad)
+        pad_v = 16 if vpad is None else max(1, vpad)
+        kwargs["pad"] = [pad_h, pad_v]
+    _maybe_assign(kwargs, "pel", pel)
+    _maybe_assign(kwargs, "sharp", sharp)
+    _maybe_assign(kwargs, "rfilter", rfilter_old_to_new(rfilter))
+    _maybe_assign(kwargs, "pelclip", pelclip)
+    return core.mvu.Super(clip, **kwargs)
+
+
+def super_from_vector(
+    core: vs.Core,
+    clip: vs.VideoNode,
+    vector: vs.VideoNode,
+    *,
+    hpad: int | None = 16,
+    vpad: int | None = 16,
+    pel: int | None = 2,
+    levels: int = 1,
+    sharp: int | None = 2,
+    rfilter: int | None = 2,
+    pelclip: vs.VideoNode | None = None,
+    chroma: bool | None = None,
+) -> vs.VideoNode:
+    with vector.get_frame(0) as frame:
+        props = frame.props
+        blksize = int(props["MVUtensilsAnalysisBlkSizeX"])
+        overlap = int(props["MVUtensilsAnalysisOverlapX"])
+    return super_clip(
+        core,
+        clip,
+        blksize=blksize,
+        overlap=overlap,
+        hpad=hpad,
+        vpad=vpad,
+        pel=pel,
+        levels=levels,
+        sharp=sharp,
+        rfilter=rfilter,
+        pelclip=pelclip,
+        chroma=chroma,
+    )
+
+
+def analyse(
+    core: vs.Core,
+    super_: vs.VideoNode,
+    *,
+    delta: int,
+    isb: bool | None = None,
+    blksize: int | None = None,
+    levels: int | None = None,
+    search: int | None = None,
+    searchparam: int | None = None,
+    pelsearch: int | None = None,
+    chroma: bool | None = None,
+    truemotion: bool | None = None,
+    lsad: int | None = None,
+    plevel: int | None = None,
+    global_: bool | None = None,
+    pnew: int | None = None,
+    pzero: int | None = None,
+    pglobal: int | None = None,
+    overlap: int | None = None,
+    badsad: int | None = None,
+    badrange: int | None = None,
+    meander: bool | None = None,
+    trymany: bool | int | None = None,
+    fields: bool | None = None,
+    tff: bool | None = None,
+    dct: int | None = 0,
+    mvlambda: int | None = None,
+    lambda_: int | None = None,
+) -> vs.VideoNode:
+    kwargs: dict[str, Any] = {}
+    _maybe_assign(kwargs, "blksize", blksize)
+    _maybe_assign(kwargs, "levels", levels)
+    _maybe_assign(kwargs, "search", search_old_to_new(search))
+    _maybe_assign(kwargs, "searchparam", searchparam)
+    _maybe_assign(kwargs, "pelsearch", pelsearch)
+    _maybe_assign(kwargs, "chroma", chroma)
+    _maybe_assign(kwargs, "overlap", overlap)
+    _maybe_assign(kwargs, "badsad", badsad)
+    _maybe_assign(kwargs, "badrange", badrange)
+    _maybe_assign(kwargs, "fields", fields)
+    _maybe_assign(kwargs, "tff", tff)
+    _maybe_assign(kwargs, "satd", dct_old_to_satd(dct))
+    if trymany is not None:
+        kwargs["trymany"] = int(trymany)
+    if meander is not None:
+        kwargs["meander"] = bool(meander)
+
+    if truemotion is not None:
+        defaults = analyse_truemotion_defaults(truemotion)
+        if mvlambda is None:
+            mvlambda = lambda_
+        kwargs["mvlambda"] = defaults["mvlambda"] if mvlambda is None else mvlambda
+        kwargs["lsad"] = defaults["lsad"] if lsad is None else lsad
+        kwargs["plevel"] = defaults["plevel"] if plevel is None else plevel
+        kwargs["globalmv"] = defaults["globalmv"] if global_ is None else global_
+        kwargs["pnew"] = defaults["pnew"] if pnew is None else pnew
+    else:
+        if mvlambda is None:
+            mvlambda = lambda_
+        _maybe_assign(kwargs, "mvlambda", mvlambda)
+        _maybe_assign(kwargs, "lsad", lsad)
+        _maybe_assign(kwargs, "plevel", plevel)
+        _maybe_assign(kwargs, "globalmv", global_)
+        _maybe_assign(kwargs, "pnew", pnew)
+
+    _maybe_assign(kwargs, "pzero", pzero)
+    _maybe_assign(kwargs, "pglobal", pglobal)
+    delta_value = delta_old_to_new(isb, delta) if isb is not None else delta
+    return core.mvu.Analyse(super_, delta=delta_value, **kwargs)
+
+
+def recalculate(
+    core: vs.Core,
+    super_: vs.VideoNode,
+    vectors: vs.VideoNode | Sequence[vs.VideoNode],
+    *,
+    thsad: int | None = None,
+    smooth: bool | None = None,
+    blksize: int | None = None,
+    search: int | None = None,
+    searchparam: int | None = None,
+    chroma: bool | None = None,
+    truemotion: bool | None = None,
+    pnew: int | None = None,
+    overlap: int | None = None,
+    meander: bool | None = None,
+    fields: bool | None = None,
+    tff: bool | None = None,
+    dct: int | None = 0,
+    mvlambda: int | None = None,
+    lambda_: int | None = None,
+) -> vs.VideoNode | list[vs.VideoNode]:
+    is_many = isinstance(vectors, Sequence) and not isinstance(vectors, vs.VideoNode)
+    vector_list = list(vectors) if is_many else [vectors]
+    kwargs: dict[str, Any] = {}
+    _maybe_assign(kwargs, "thsad", thsad)
+    _maybe_assign(kwargs, "smooth", smooth)
+    _maybe_assign(kwargs, "blksize", blksize)
+    _maybe_assign(kwargs, "search", search_old_to_new(search))
+    _maybe_assign(kwargs, "searchparam", searchparam)
+    _maybe_assign(kwargs, "chroma", chroma)
+    _maybe_assign(kwargs, "overlap", overlap)
+    _maybe_assign(kwargs, "fields", fields)
+    _maybe_assign(kwargs, "tff", tff)
+    _maybe_assign(kwargs, "satd", dct_old_to_satd(dct))
+    if meander is not None:
+        kwargs["meander"] = bool(meander)
+
+    if truemotion is not None:
+        defaults = recalculate_truemotion_defaults(truemotion)
+        if mvlambda is None:
+            mvlambda = lambda_
+        kwargs["mvlambda"] = defaults["mvlambda"] if mvlambda is None else mvlambda
+        kwargs["pnew"] = defaults["pnew"] if pnew is None else pnew
+    else:
+        if mvlambda is None:
+            mvlambda = lambda_
+        _maybe_assign(kwargs, "mvlambda", mvlambda)
+        _maybe_assign(kwargs, "pnew", pnew)
+
+    result = core.mvu.Recalculate(super_, vector_list, **kwargs)
+    if is_many:
+        return [result] if isinstance(result, vs.VideoNode) else list(result)
+    if isinstance(result, Sequence):
+        return result[0]
+    return result
+
+
+def degrain(
+    core: vs.Core,
+    clip: vs.VideoNode,
+    super_: vs.VideoNode,
+    vectors: Sequence[vs.VideoNode],
+    *,
+    thsad: int,
+    thsadc: int | None = None,
+    plane: int = 4,
+    limit: float | int | None = None,
+    limitc: float | int | None = None,
+    thscd1: int | None = None,
+    thscd2: float | int | None = None,
+    weights: Sequence[int] | None = None,
+) -> vs.VideoNode:
+    kwargs: dict[str, Any] = {
+        "thsad": [thsad, thsad if thsadc is None else thsadc],
+        "planes": plane_to_planes(plane, clip),
+    }
+    if limit is not None or limitc is not None:
+        luma_limit = limit
+        chroma_limit = limit if limitc is None else limitc
+        kwargs["limit"] = [luma_limit, chroma_limit]
+    _maybe_assign(kwargs, "thscd1", thscd1)
+    if thscd2 is not None:
+        kwargs["thscd2"] = scd2_old_to_new(thscd2)
+    _maybe_assign(kwargs, "weights", list(weights) if weights is not None else None)
+    return core.mvu.Degrain(clip, super_, list(vectors), **kwargs)
+
+
+def compensate(
+    core: vs.Core,
+    clip: vs.VideoNode,
+    super_: vs.VideoNode,
+    vectors: vs.VideoNode,
+    *,
+    thsad: int | None = None,
+    fields: bool | None = None,
+    time: float | None = None,
+    thscd1: int | None = None,
+    thscd2: float | int | None = None,
+    tff: bool | None = None,
+) -> vs.VideoNode:
+    kwargs: dict[str, Any] = {}
+    _maybe_assign(kwargs, "thsad", thsad)
+    _maybe_assign(kwargs, "fields", fields)
+    _maybe_assign(kwargs, "time", time)
+    _maybe_assign(kwargs, "thscd1", thscd1)
+    if thscd2 is not None:
+        kwargs["thscd2"] = scd2_old_to_new(thscd2)
+    _maybe_assign(kwargs, "tff", tff)
+    return core.mvu.Compensate(clip, super_, vectors, **kwargs)
+
+
+def depan_compensate_compat(
+    core: vs.Core,
+    clip: vs.VideoNode,
+    *,
+    data: vs.VideoNode,
+    offset: int | None = None,
+    mirror: int | None = None,
+    blur: int | None = None,
+    zoommax: float | None = None,
+    rotmax: float | None = None,
+    subpixel: int | None = None,
+    pixaspect: float | None = None,
+    matchfields: bool | None = None,
+    fields: bool | None = None,
+    tff: bool | None = None,
+) -> vs.VideoNode:
+    with data.get_frame(0) as frame:
+        props = frame.props
+        has_depan_motion = all(key in props for key in ("Depan_dx", "Depan_dy", "Depan_rot", "Depan_zoom"))
+        if has_depan_motion and "Depan_goodmotion" not in props:
+            data = core.std.SetFrameProp(data, prop="Depan_goodmotion", intval=1)
+    kwargs: dict[str, Any] = {}
+    _maybe_assign(kwargs, "offset", offset)
+    _maybe_assign(kwargs, "mirror", mirror)
+    _maybe_assign(kwargs, "blur", blur)
+    _maybe_assign(kwargs, "zoommax", zoommax)
+    _maybe_assign(kwargs, "rotmax", rotmax)
+    _maybe_assign(kwargs, "subpixel", subpixel)
+    _maybe_assign(kwargs, "pixaspect", pixaspect)
+    _maybe_assign(kwargs, "matchfields", matchfields)
+    _maybe_assign(kwargs, "fields", fields)
+    _maybe_assign(kwargs, "tff", tff)
+    return core.mvu.DepanCompensate(clip, data=data, **kwargs)
+
+
+def flowblur(
+    core: vs.Core,
+    clip: vs.VideoNode,
+    super_: vs.VideoNode,
+    mvbw: vs.VideoNode,
+    mvfw: vs.VideoNode,
+    *,
+    blur: float | None = None,
+    prec: int | None = None,
+    thscd1: int | None = None,
+    thscd2: float | int | None = None,
+) -> vs.VideoNode:
+    kwargs: dict[str, Any] = {}
+    _maybe_assign(kwargs, "blur", blur)
+    _maybe_assign(kwargs, "prec", prec)
+    _maybe_assign(kwargs, "thscd1", thscd1)
+    if thscd2 is not None:
+        kwargs["thscd2"] = scd2_old_to_new(thscd2)
+    return core.mvu.FlowBlur(clip, super_, [mvbw, mvfw], **kwargs)
+
+
+def _validate_mv_kernel(func_name: str, mv_kernel: str) -> None:
+    if mv_kernel not in {"mvu", "mv"}:
+        raise vs.Error(f"{func_name}: mv_kernel must be 'mvu' or 'mv'")
+
+
+def _set_mv_kernel_signature(wrapper, reference) -> None:
+    signature = inspect.signature(reference)
+    parameters = list(signature.parameters.values())
+    parameters.append(
+        inspect.Parameter("mv_kernel", inspect.Parameter.KEYWORD_ONLY, default="mvu")
+    )
+    wrapper.__signature__ = signature.replace(parameters=parameters)
+
+
+def _repair(clip, repair_clip, mode):
+    return core.zsmooth.Repair(clip, repair_clip, mode=mode)
+
+
+def _removegrain(clip, mode):
+    return core.zsmooth.RemoveGrain(clip, mode=mode)
+
+
+def _vertical_cleaner(clip, mode):
+    return core.zsmooth.VerticalCleaner(clip, mode=mode)
+
+
+def _super_from_vectors(clip, *vectors, pel=2, sharp=2, levels=1, hpad=16, vpad=16, rfilter=2, pelclip=None, chroma=None):
+    for vector in vectors:
+        if isinstance(vector, vs.VideoNode):
+            return super_from_vector(
+                core,
+                clip,
+                vector,
+                pel=pel,
+                sharp=sharp,
+                levels=levels,
+                hpad=hpad,
+                vpad=vpad,
+                rfilter=rfilter,
+                pelclip=pelclip,
+                chroma=chroma,
+            )
+    raise vs.Error("QTGMC: could not infer super clip geometry from motion vectors")
+
+
+def _unsupported_qtgmc_prog_mask(mask_value):
+    raise vs.Error(f"QTGMC: ProgSADMask={mask_value} is not migrated because mvutensils has no mv.Mask equivalent")
+
+
+def _unsupported_qtgmc_shutter_mask(mask_value):
+    raise vs.Error(f"QTGMC: SBlurLimit={mask_value} with ShutterBlur enabled is not migrated because mvutensils has no mv.Mask equivalent")
+
+
+def _compile_transformed_local_function(function, replacements, new_name=None):
+    source = inspect.getsource(function)
+    if new_name is not None:
+        source = source.replace(f"def {function.__name__}(", f"def {new_name}(", 1)
+    for old, new in replacements:
+        if old in source:
+            source = source.replace(old, new)
+            continue
+        if new in source:
+            continue
+        if old not in source:
+            raise RuntimeError(f"Expected snippet not found while transforming {function.__name__}: {old}")
+    exec(source, globals())
+
+
+_compile_transformed_local_function(
+    _legacy_QTGMC_MakeLossless,
+    [
+        ("processed.rgvs.VerticalCleaner(mode=1)", "_vertical_cleaner(processed, mode=1)"),
+        ("vmNewDiff1.rgvs.VerticalCleaner(mode=1)", "_vertical_cleaner(vmNewDiff1, mode=1)"),
+        (
+            "core.rgvs.Repair(vmNewDiff2, vmNewDiff2.rgvs.RemoveGrain(mode=2), mode=1)",
+            "_repair(vmNewDiff2, _removegrain(vmNewDiff2, mode=2), mode=1)",
+        ),
+    ],
+    new_name="_QTGMC_MakeLossless_mvu",
+)
+
+
+_compile_transformed_local_function(
+    _legacy_QTGMC_ApplySourceMatch,
+    [
+        (
+            "match1Edi.mv.Super(pel=SubPel, sharp=SubPelInterp, levels=1, hpad=hpad, vpad=vpad)",
+            "_super_from_vectors(match1Edi, bVec1, fVec1, bVec2, fVec2, pel=SubPel, sharp=SubPelInterp, levels=1, hpad=hpad, vpad=vpad)",
+        ),
+        (
+            "core.mv.Degrain1(match1Edi, match1Super, bVec1, fVec1, thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+            "degrain(core, match1Edi, match1Super, [bVec1, fVec1], thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+        ),
+        (
+            "core.mv.Degrain1(match1Edi, match1Super, bVec2, fVec2, thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+            "degrain(core, match1Edi, match1Super, [bVec2, fVec2], thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+        ),
+        (
+            "match2Edi.mv.Super(pel=SubPel, sharp=SubPelInterp, levels=1, hpad=hpad, vpad=vpad)",
+            "_super_from_vectors(match2Edi, bVec1, fVec1, bVec2, fVec2, pel=SubPel, sharp=SubPelInterp, levels=1, hpad=hpad, vpad=vpad)",
+        ),
+        (
+            "core.mv.Degrain1(match2Edi, match2Super, bVec1, fVec1, thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+            "degrain(core, match2Edi, match2Super, [bVec1, fVec1], thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+        ),
+        (
+            "core.mv.Degrain1(match2Edi, match2Super, bVec2, fVec2, thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+            "degrain(core, match2Edi, match2Super, [bVec2, fVec2], thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+        ),
+        (
+            "match3Update.mv.Super(pel=SubPel, sharp=SubPelInterp, levels=1, hpad=hpad, vpad=vpad)",
+            "_super_from_vectors(match3Update, bVec1, fVec1, bVec2, fVec2, pel=SubPel, sharp=SubPelInterp, levels=1, hpad=hpad, vpad=vpad)",
+        ),
+        (
+            "core.mv.Degrain1(match3Update, match3Super, bVec1, fVec1, thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+            "degrain(core, match3Update, match3Super, [bVec1, fVec1], thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+        ),
+        (
+            "core.mv.Degrain1(match3Update, match3Super, bVec2, fVec2, thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+            "degrain(core, match3Update, match3Super, [bVec2, fVec2], thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)",
+        ),
+    ],
+    new_name="_QTGMC_ApplySourceMatch_mvu",
+)
+
+
+_compile_transformed_local_function(
+    _legacy_QTGMC,
+    [
+        ("srchClip.mv.Super(sharp=SubPelInterp, chroma=ChromaMotion, **super_args)", "super_clip(core, srchClip, blksize=BlockSize, overlap=Overlap, sharp=SubPelInterp, chroma=ChromaMotion, **super_args)"),
+        ("srchSuper.mv.Analyse(isb=True, delta=1, **analyse_args)", "analyse(core, srchSuper, isb=True, delta=1, **analyse_args)"),
+        ("srchSuper.mv.Analyse(isb=False, delta=1, **analyse_args)", "analyse(core, srchSuper, isb=False, delta=1, **analyse_args)"),
+        ("srchSuper.mv.Analyse(isb=True, delta=2, **analyse_args)", "analyse(core, srchSuper, isb=True, delta=2, **analyse_args)"),
+        ("srchSuper.mv.Analyse(isb=False, delta=2, **analyse_args)", "analyse(core, srchSuper, isb=False, delta=2, **analyse_args)"),
+        ("srchSuper.mv.Analyse(isb=True, delta=3, **analyse_args)", "analyse(core, srchSuper, isb=True, delta=3, **analyse_args)"),
+        ("srchSuper.mv.Analyse(isb=False, delta=3, **analyse_args)", "analyse(core, srchSuper, isb=False, delta=3, **analyse_args)"),
+        ("fullClip.mv.Super(levels=1, chroma=ChromaNoise, **super_args)", "super_clip(core, fullClip, blksize=BlockSize, overlap=Overlap, levels=1, chroma=ChromaNoise, **super_args)"),
+        ("deintNoise.mv.Super(sharp=SubPelInterp, levels=1, chroma=ChromaNoise, **super_args)", "super_clip(core, deintNoise, blksize=BlockSize, overlap=Overlap, sharp=SubPelInterp, levels=1, chroma=ChromaNoise, **super_args)"),
+        ("core.mv.Mask(srchClip, bVec1, kind=1, ml=ProgSADMask)", "_unsupported_qtgmc_prog_mask(ProgSADMask)"),
+        ("edi.mv.Super(sharp=SubPelInterp, levels=1, **super_args)", "super_clip(core, edi, blksize=BlockSize, overlap=Overlap, sharp=SubPelInterp, levels=1, **super_args)"),
+        ("core.mv.Degrain1(edi, ediSuper, bVec1, fVec1, thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)", "degrain(core, edi, ediSuper, [bVec1, fVec1], thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)"),
+        ("core.mv.Degrain1(edi, ediSuper, bVec2, fVec2, thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)", "degrain(core, edi, ediSuper, [bVec2, fVec2], thsad=ThSAD1, thscd1=ThSCD1, thscd2=ThSCD2)"),
+        ("lossed1.rgvs.VerticalCleaner(mode=1 if is_gray else [1, 0])", "_vertical_cleaner(lossed1, mode=1 if is_gray else [1, 0])"),
+        ("addNoise1.mv.Super(sharp=SubPelInterp, levels=1, **super_args)", "super_clip(core, addNoise1, blksize=BlockSize, overlap=Overlap, sharp=SubPelInterp, levels=1, **super_args)"),
+        ("core.mv.Degrain1(addNoise1, stableSuper, bVec1, fVec1, thsad=ThSAD2, thscd1=ThSCD1, thscd2=ThSCD2)", "degrain(core, addNoise1, stableSuper, [bVec1, fVec1], thsad=ThSAD2, thscd1=ThSCD1, thscd2=ThSCD2)"),
+        ("core.mv.Degrain2(addNoise1, stableSuper, bVec1, fVec1, bVec2, fVec2, thsad=ThSAD2, thscd1=ThSCD1, thscd2=ThSCD2)", "degrain(core, addNoise1, stableSuper, [bVec1, fVec1, bVec2, fVec2], thsad=ThSAD2, thscd1=ThSCD1, thscd2=ThSCD2)"),
+        ("core.mv.Degrain3(addNoise1, stableSuper, bVec1, fVec1, bVec2, fVec2, bVec3, fVec3, thsad=ThSAD2, thscd1=ThSCD1, thscd2=ThSCD2)", "degrain(core, addNoise1, stableSuper, [bVec1, fVec1, bVec2, fVec2, bVec3, fVec3], thsad=ThSAD2, thscd1=ThSCD1, thscd2=ThSCD2)"),
+        ("addNoise2.mv.Super(sharp=SubPelInterp, levels=1, **super_args)", "super_clip(core, addNoise2, blksize=BlockSize, overlap=Overlap, sharp=SubPelInterp, levels=1, **super_args)"),
+        ("core.mv.Mask(srchClip, bVec1, kind=0, ml=SBlurLimit)", "_unsupported_qtgmc_shutter_mask(SBlurLimit)"),
+        ("_legacy_QTGMC_ApplySourceMatch(", "_QTGMC_ApplySourceMatch_mvu("),
+        ("_legacy_QTGMC_MakeLossless(", "_QTGMC_MakeLossless_mvu("),
+        ("core.mv.Recalculate(", "recalculate(core, "),
+        ("core.mv.Compensate(", "compensate(core, "),
+        ("core.mv.FlowBlur(", "flowblur(core, "),
+        ("core.rgvs.Repair(", "_repair("),
+    ],
+    new_name="_QTGMC_mvu",
+)
+
+
+def _Stab_mvu(clp, dxmax=4, dymax=4, mirror=0):
+    if not isinstance(clp, vs.VideoNode):
+        raise vs.Error("Stab: this is not a clip")
+    temp = AverageFrames(clp, weights=[1] * 15, scenechange=25 / 255)
+    inter = core.std.Interleave([core.zsmooth.Repair(temp, AverageFrames(clp, weights=[1] * 3, scenechange=25 / 255), mode=[1]), clp])
+    mdata = core.mvu.DepanEstimate(inter, trust=0, dxmax=dxmax, dymax=dymax)
+    last = depan_compensate_compat(core, inter, data=mdata, offset=-1, mirror=mirror)
+    return last[::2]
+
+
+def _MCTemporalDenoise_mvu(i, radius=None, pfMode=3, sigma=None, twopass=None, useTTmpSm=False, limit=None, limit2=None, post=0, chroma=None, refine=False, deblock=False, useQED=None, quant1=None,
+                           quant2=None, edgeclean=False, ECrad=None, ECthr=None, stabilize=None, maxr=None, TTstr=None, bwbh=None, owoh=None, blksize=None, overlap=None, bt=None, ncpu=1, thSAD=None,
+                           thSADC=None, thSAD2=None, thSADC2=None, thSCD1=None, thSCD2=None, truemotion=False, MVglobal=True, pel=None, pelsearch=None, search=4, searchparam=2, MVsharp=None, DCT=0, p=None,
+                           settings="low"):
+    if not isinstance(i, vs.VideoNode):
+        raise vs.Error("MCTemporalDenoise: this is not a clip")
+
+    if p is not None and (not isinstance(p, vs.VideoNode) or p.format.id != i.format.id):
+        raise vs.Error("MCTemporalDenoise: 'p' must be the same format as input")
+
+    isGray = i.format.color_family == vs.GRAY
+
+    neutral = 1 << (i.format.bits_per_sample - 1)
+    peak = (1 << i.format.bits_per_sample) - 1
+
+    try:
+        settings_num = ["very low", "low", "medium", "high", "very high"].index(settings.lower())
+    except Exception as exc:
+        raise vs.Error("MCTemporalDenoise: these settings do not exist") from exc
+
+    HD = i.width > 1024 or i.height > 576
+
+    if radius is None:
+        radius = [1, 2, 3, 2, 3][settings_num]
+    if sigma is None:
+        sigma = [2, 4, 8, 12, 16][settings_num]
+    if twopass is None:
+        twopass = [False, False, False, True, True][settings_num]
+    if limit is None:
+        limit = [-1, -1, -1, -1, 0][settings_num]
+    if limit2 is None:
+        limit2 = [-1, -1, -1, 0, 0][settings_num]
+    if chroma is None:
+        chroma = [False, False, True, True, True][settings_num]
+    if useQED is None:
+        useQED = [True, True, True, False, False][settings_num]
+    if quant1 is None:
+        quant1 = [10, 20, 30, 30, 40][settings_num]
+    if quant2 is None:
+        quant2 = [20, 40, 60, 60, 80][settings_num]
+    if ECrad is None:
+        ECrad = [1, 2, 3, 4, 5][settings_num]
+    if ECthr is None:
+        ECthr = [64, 32, 32, 16, 16][settings_num]
+    if stabilize is None:
+        stabilize = [False, False, False, True, True][settings_num]
+    if maxr is None:
+        maxr = [1, 1, 2, 2, 2][settings_num]
+    if TTstr is None:
+        TTstr = [1, 1, 1, 2, 2][settings_num]
+    if bwbh is None:
+        bwbh = 16 if HD else 8
+    if owoh is None:
+        owoh = 8 if HD else 4
+    if blksize is None:
+        blksize = 16 if HD else 8
+    if overlap is None:
+        overlap = 8 if HD else 4
+    if bt is None:
+        bt = [1, 3, 3, 3, 4][settings_num]
+    if thSAD is None:
+        thSAD = [200, 300, 400, 500, 600][settings_num]
+    if thSADC is None:
+        thSADC = thSAD // 2
+    if thSAD2 is None:
+        thSAD2 = [200, 300, 400, 500, 600][settings_num]
+    if thSADC2 is None:
+        thSADC2 = thSAD2 // 2
+    if thSCD1 is None:
+        thSCD1 = [200, 300, 400, 500, 600][settings_num]
+    if thSCD2 is None:
+        thSCD2 = [90, 100, 100, 130, 130][settings_num]
+    if pel is None:
+        pel = [1, 2, 2, 2, 2][settings_num]
+    if pelsearch is None:
+        pelsearch = [1, 2, 2, 2, 2][settings_num]
+    if MVsharp is None:
+        MVsharp = [2, 2, 2, 1, 0][settings_num]
+
+    sigma *= peak / 255
+    limit = scale(limit, peak)
+    limit2 = scale(limit2, peak)
+    post *= peak / 255
+    ECthr = scale(ECthr, peak)
+    planes = [0, 1, 2] if chroma and not isGray else [0]
+
+    mod = bwbh if bwbh >= blksize else blksize
+    xi = i.width
+    xf = math.ceil(xi / mod) * mod - xi + mod
+    xn = int(xi + xf)
+    yi = i.height
+    yf = math.ceil(yi / mod) * mod - yi + mod
+    yn = int(yi + yf)
+
+    pointresize_args = dict(width=xn, height=yn, src_left=-xf / 2, src_top=-yf / 2, src_width=xn, src_height=yn)
+    i = i.resize.Point(**pointresize_args)
+
+    fft3d_args = dict(planes=planes, bw=bwbh, bh=bwbh, bt=bt, ow=owoh, oh=owoh, ncpu=ncpu)
+    if p is not None:
+        p = p.resize.Point(**pointresize_args)
+    elif pfMode <= -1:
+        p = i
+    elif pfMode == 0:
+        p = i.fft3dfilter.FFT3DFilter(sigma=sigma * 0.8, sigma2=sigma * 0.6, sigma3=sigma * 0.4, sigma4=sigma * 0.2, **fft3d_args)
+    elif pfMode >= 3:
+        p = _dfttest_preferring_dfttest2(i, tbsize=1, slocation=[0.0, 4.0, 0.2, 9.0, 1.0, 15.0], planes=planes)
+    else:
+        p = MinBlur(i, r=pfMode, planes=planes)
+
+    pD = core.std.MakeDiff(i, p, planes=planes)
+    p = DitherLumaRebuild(p, s0=1, chroma=chroma)
+
+    crop_args = dict(left=xf // 2, right=xf // 2, top=yf // 2, bottom=yf // 2)
+    if not deblock:
+        d = i
+    elif useQED:
+        d = Deblock_QED(i.std.Crop(**crop_args), quant1=quant1, quant2=quant2, uv=3 if chroma else 2).resize.Point(**pointresize_args)
+    else:
+        d = i.std.Crop(**crop_args).deblock.Deblock(quant=(quant1 + quant2) // 2, planes=planes).resize.Point(**pointresize_args)
+
+    fine_blksize = max(blksize // 2, 4) if refine else blksize
+    fine_overlap = max(overlap // 2, 2) if refine else overlap
+
+    pMVS = super_clip(core, p, blksize=blksize, overlap=overlap, hpad=0, vpad=0, pel=pel, sharp=MVsharp, rfilter=4 if refine else 2)
+    if refine:
+        rMVS = super_clip(core, p, blksize=fine_blksize, overlap=fine_overlap, hpad=0, vpad=0, pel=pel, levels=1, sharp=MVsharp)
+
+    analyse_args = dict(blksize=blksize, search=search, searchparam=searchparam, pelsearch=pelsearch, chroma=chroma, truemotion=truemotion, global_=MVglobal, overlap=overlap, dct=DCT)
+    recalculate_args = dict(thsad=thSAD // 2, blksize=fine_blksize, search=search, chroma=chroma, truemotion=truemotion, overlap=fine_overlap, dct=DCT)
+    f1v = analyse(core, pMVS, isb=False, delta=1, **analyse_args)
+    b1v = analyse(core, pMVS, isb=True, delta=1, **analyse_args)
+    if refine:
+        f1v = recalculate(core, rMVS, f1v, **recalculate_args)
+        b1v = recalculate(core, rMVS, b1v, **recalculate_args)
+    if radius > 1:
+        f2v = analyse(core, pMVS, isb=False, delta=2, **analyse_args)
+        b2v = analyse(core, pMVS, isb=True, delta=2, **analyse_args)
+        if refine:
+            f2v = recalculate(core, rMVS, f2v, **recalculate_args)
+            b2v = recalculate(core, rMVS, b2v, **recalculate_args)
+    if radius > 2:
+        f3v = analyse(core, pMVS, isb=False, delta=3, **analyse_args)
+        b3v = analyse(core, pMVS, isb=True, delta=3, **analyse_args)
+        if refine:
+            f3v = recalculate(core, rMVS, f3v, **recalculate_args)
+            b3v = recalculate(core, rMVS, b3v, **recalculate_args)
+    if radius > 3:
+        f4v = analyse(core, pMVS, isb=False, delta=4, **analyse_args)
+        b4v = analyse(core, pMVS, isb=True, delta=4, **analyse_args)
+        if refine:
+            f4v = recalculate(core, rMVS, f4v, **recalculate_args)
+            b4v = recalculate(core, rMVS, b4v, **recalculate_args)
+    if radius > 4:
+        f5v = analyse(core, pMVS, isb=False, delta=5, **analyse_args)
+        b5v = analyse(core, pMVS, isb=True, delta=5, **analyse_args)
+        if refine:
+            f5v = recalculate(core, rMVS, f5v, **recalculate_args)
+            b5v = recalculate(core, rMVS, b5v, **recalculate_args)
+    if radius > 5:
+        f6v = analyse(core, pMVS, isb=False, delta=6, **analyse_args)
+        b6v = analyse(core, pMVS, isb=True, delta=6, **analyse_args)
+        if refine:
+            f6v = recalculate(core, rMVS, f6v, **recalculate_args)
+            b6v = recalculate(core, rMVS, b6v, **recalculate_args)
+
+    def MCTD_MVD(clip, clip_super, sad_luma, sad_chroma):
+        if radius <= 1:
+            return degrain(core, clip, clip_super, [b1v, f1v], thsad=sad_luma, thsadc=sad_chroma, plane=4 if chroma else 0, thscd1=thSCD1, thscd2=thSCD2)
+        if radius == 2:
+            return degrain(core, clip, clip_super, [b1v, f1v, b2v, f2v], thsad=sad_luma, thsadc=sad_chroma, plane=4 if chroma else 0, thscd1=thSCD1, thscd2=thSCD2)
+        if radius == 3:
+            return degrain(core, clip, clip_super, [b1v, f1v, b2v, f2v, b3v, f3v], thsad=sad_luma, thsadc=sad_chroma, plane=4 if chroma else 0, thscd1=thSCD1, thscd2=thSCD2)
+        if radius == 4:
+            mv12 = degrain(core, clip, clip_super, [b1v, f1v, b2v, f2v], thsad=sad_luma, thsadc=sad_chroma, plane=4 if chroma else 0, thscd1=thSCD1, thscd2=thSCD2)
+            mv34 = degrain(core, clip, clip_super, [b3v, f3v, b4v, f4v], thsad=sad_luma, thsadc=sad_chroma, plane=4 if chroma else 0, thscd1=thSCD1, thscd2=thSCD2)
+            return core.std.Merge(mv12, mv34, weight=[0.4444])
+        if radius == 5:
+            mv123 = degrain(core, clip, clip_super, [b1v, f1v, b2v, f2v, b3v, f3v], thsad=sad_luma, thsadc=sad_chroma, plane=4 if chroma else 0, thscd1=thSCD1, thscd2=thSCD2)
+            mv45 = degrain(core, clip, clip_super, [b4v, f4v, b5v, f5v], thsad=sad_luma, thsadc=sad_chroma, plane=4 if chroma else 0, thscd1=thSCD1, thscd2=thSCD2)
+            return core.std.Merge(mv123, mv45, weight=[0.4545])
+        mv123 = degrain(core, clip, clip_super, [b1v, f1v, b2v, f2v, b3v, f3v], thsad=sad_luma, thsadc=sad_chroma, plane=4 if chroma else 0, thscd1=thSCD1, thscd2=thSCD2)
+        mv456 = degrain(core, clip, clip_super, [b4v, f4v, b5v, f5v, b6v, f6v], thsad=sad_luma, thsadc=sad_chroma, plane=4 if chroma else 0, thscd1=thSCD1, thscd2=thSCD2)
+        return core.std.Merge(mv123, mv456, weight=[0.4615])
+
+    def MCTD_TTSM(clip, clip_super, sad_value):
+        compensate_args = dict(thsad=sad_value, thscd1=thSCD1, thscd2=thSCD2)
+        f1c = compensate(core, clip, clip_super, f1v, **compensate_args)
+        b1c = compensate(core, clip, clip_super, b1v, **compensate_args)
+        if radius > 1:
+            f2c = compensate(core, clip, clip_super, f2v, **compensate_args)
+            b2c = compensate(core, clip, clip_super, b2v, **compensate_args)
+        if radius > 2:
+            f3c = compensate(core, clip, clip_super, f3v, **compensate_args)
+            b3c = compensate(core, clip, clip_super, b3v, **compensate_args)
+        if radius > 3:
+            f4c = compensate(core, clip, clip_super, f4v, **compensate_args)
+            b4c = compensate(core, clip, clip_super, b4v, **compensate_args)
+        if radius > 4:
+            f5c = compensate(core, clip, clip_super, f5v, **compensate_args)
+            b5c = compensate(core, clip, clip_super, b5v, **compensate_args)
+        if radius > 5:
+            f6c = compensate(core, clip, clip_super, f6v, **compensate_args)
+            b6c = compensate(core, clip, clip_super, b6v, **compensate_args)
+
+        if radius <= 1:
+            c = core.std.Interleave([f1c, clip, b1c])
+        elif radius == 2:
+            c = core.std.Interleave([f2c, f1c, clip, b1c, b2c])
+        elif radius == 3:
+            c = core.std.Interleave([f3c, f2c, f1c, clip, b1c, b2c, b3c])
+        elif radius == 4:
+            c = core.std.Interleave([f4c, f3c, f2c, f1c, clip, b1c, b2c, b3c, b4c])
+        elif radius == 5:
+            c = core.std.Interleave([f5c, f4c, f3c, f2c, f1c, clip, b1c, b2c, b3c, b4c, b5c])
+        else:
+            c = core.std.Interleave([f6c, f5c, f4c, f3c, f2c, f1c, clip, b1c, b2c, b3c, b4c, b5c, b6c])
+
+        sm = core.zsmooth.TTempSmooth(c, maxr=radius, thresh=[255], mdiff=[1], strength=radius + 1, scthresh=99.9, fp=False, planes=planes)
+        return sm.std.SelectEvery(cycle=radius * 2 + 1, offsets=[radius])
+
+    dMVS = super_clip(core, d, blksize=fine_blksize, overlap=fine_overlap, levels=1, hpad=0, vpad=0, pel=pel, sharp=MVsharp)
+    sm = MCTD_TTSM(d, dMVS, thSAD) if useTTmpSm else MCTD_MVD(d, dMVS, thSAD, thSADC)
+
+    if limit <= -1:
+        smD = core.std.MakeDiff(i, sm, planes=planes)
+        expr = f"x {neutral} - abs y {neutral} - abs < x y ?"
+        DD = core.std.Expr([pD, smD], expr=[expr] if chroma or isGray else [expr, ""])
+        smL = core.std.MakeDiff(i, DD, planes=planes)
+    elif limit > 0:
+        expr = f"x y - abs {limit} <= x x y - 0 < y {limit} - y {limit} + ? ?"
+        smL = core.std.Expr([sm, i], expr=[expr] if chroma or isGray else [expr, ""])
+    else:
+        smL = sm
+
+    if twopass:
+        smLMVS = super_clip(core, smL, blksize=fine_blksize, overlap=fine_overlap, levels=1, hpad=0, vpad=0, pel=pel, sharp=MVsharp)
+        sm = MCTD_TTSM(smL, smLMVS, thSAD2) if useTTmpSm else MCTD_MVD(smL, smLMVS, thSAD2, thSADC2)
+
+        if limit2 <= -1:
+            smD = core.std.MakeDiff(i, sm, planes=planes)
+            expr = f"x {neutral} - abs y {neutral} - abs < x y ?"
+            DD = core.std.Expr([pD, smD], expr=[expr] if chroma or isGray else [expr, ""])
+            smL = core.std.MakeDiff(i, DD, planes=planes)
+        elif limit2 > 0:
+            expr = f"x y - abs {limit2} <= x x y - 0 < y {limit2} - y {limit2} + ? ?"
+            smL = core.std.Expr([sm, i], expr=[expr] if chroma or isGray else [expr, ""])
+        else:
+            smL = sm
+
+    if post <= 0:
+        smP = smL
+    else:
+        smP = smL.fft3dfilter.FFT3DFilter(sigma=post * 0.8, sigma2=post * 0.6, sigma3=post * 0.4, sigma4=post * 0.2, **fft3d_args)
+
+    if edgeclean:
+        mP = AvsPrewitt(mvf.GetPlane(smP, 0))
+        mS = mt_expand_multi(mP, sw=ECrad, sh=ECrad).std.Inflate()
+        mD = core.std.Expr([mS, mP.std.Inflate()], expr=[f"x y - {ECthr} <= 0 x y - ?"]).std.Inflate().std.Convolution(matrix=[1, 1, 1, 1, 1, 1, 1, 1, 1])
+        smP = core.std.MaskedMerge(smP, DeHalo_alpha(_dfttest_preferring_dfttest2(smP, tbsize=1, planes=planes), darkstr=0), mD, planes=planes)
+
+    if stabilize:
+        mE = AvsPrewitt(mvf.GetPlane(smP, 0)).std.Lut(function=lambda x: min(cround(x ** 1.8), peak)).std.Median().std.Inflate()
+        mF = mE.std.Convolution(matrix=[1, 1, 1, 1, 1, 1, 1, 1, 1])
+        TTc = core.zsmooth.TTempSmooth(smP, maxr=maxr, mdiff=[255], strength=TTstr, planes=planes)
+        smP = core.std.MaskedMerge(TTc, smP, mF, planes=planes)
+
+    return smP.std.Crop(**crop_args)
+
+
+def _SMDegrain_mvu(input, tr=2, thSAD=300, thSADC=None, RefineMotion=False, contrasharp=None, CClip=None, interlaced=False, tff=None, plane=4, Globals=0, pel=None, subpixel=2, prefilter=-1, mfilter=None,
+                   blksize=None, overlap=None, search=4, truemotion=None, MVglobal=None, dct=0, limit=255, limitc=None, thSCD1=400, thSCD2=130, chroma=True, hpad=None, vpad=None, Str=1.0, Amp=0.0625):
+    if not isinstance(input, vs.VideoNode):
+        raise vs.Error("SMDegrain: this is not a clip")
+
+    if input.format.color_family == vs.GRAY:
+        plane = 0
+        chroma = False
+
+    peak = (1 << input.format.bits_per_sample) - 1
+
+    thSAD2 = thSAD // 2
+    if thSADC is None:
+        thSADC = thSAD2
+
+    GlobalR = Globals == 1
+    GlobalO = Globals >= 3
+    if1 = CClip is not None
+
+    if contrasharp is None:
+        contrasharp = not GlobalO and if1
+
+    w = input.width
+    h = input.height
+    preclip = isinstance(prefilter, vs.VideoNode)
+    ifC = isinstance(contrasharp, bool)
+    if0 = contrasharp if ifC else contrasharp > 0
+    if4 = w > 1024 or h > 576
+
+    if pel is None:
+        pel = 1 if if4 else 2
+    if pel < 2:
+        subpixel = min(subpixel, 2)
+    pelclip = pel > 1 and subpixel >= 3
+
+    if blksize is None:
+        blksize = 16 if if4 else 8
+    blk2 = blksize // 2
+    if overlap is None:
+        overlap = blk2
+    ovl2 = overlap // 2
+    if truemotion is None:
+        truemotion = not if4
+    if MVglobal is None:
+        MVglobal = truemotion
+
+    planes = [0, 1, 2] if chroma else [0]
+
+    if hpad is None:
+        hpad = blksize
+    if vpad is None:
+        vpad = blksize
+    limit = scale(limit, peak)
+    if limitc is None:
+        limitc = limit
+    else:
+        limitc = scale(limitc, peak)
+
+    if not (ifC or isinstance(contrasharp, int)):
+        raise vs.Error("SMDegrain: 'contrasharp' only accepts bool and integer inputs")
+    if if1 and (not isinstance(CClip, vs.VideoNode) or CClip.format.id != input.format.id):
+        raise vs.Error("SMDegrain: 'CClip' must be the same format as input")
+    if interlaced and h & 3:
+        raise vs.Error("SMDegrain: interlaced source requires mod 4 height sizes")
+    if interlaced and not isinstance(tff, bool):
+        raise vs.Error("SMDegrain: 'tff' must be set if source is interlaced. Setting tff to true means top field first and false means bottom field first")
+    if not (isinstance(prefilter, int) or preclip):
+        raise vs.Error("SMDegrain: 'prefilter' only accepts integer and clip inputs")
+    if preclip and prefilter.format.id != input.format.id:
+        raise vs.Error("SMDegrain: 'prefilter' must be the same format as input")
+    if mfilter is not None and (not isinstance(mfilter, vs.VideoNode) or mfilter.format.id != input.format.id):
+        raise vs.Error("SMDegrain: 'mfilter' must be the same format as input")
+    if RefineMotion and blksize < 8:
+        raise vs.Error("SMDegrain: for RefineMotion you need a blksize of at least 8")
+    if not chroma and plane != 0:
+        raise vs.Error("SMDegrain: denoising chroma with luma only vectors is bugged in mvtools and thus unsupported")
+
+    if RefineMotion:
+        halfblksize = blk2
+        halfoverlap = overlap if overlap <= 2 else ovl2 + ovl2 % 2
+        halfthSAD = thSAD2
+
+    if not interlaced:
+        inputP = input
+    else:
+        inputP = input.std.SeparateFields(tff=tff)
+
+    if mfilter is None:
+        mfilter = inputP
+
+    if not GlobalR:
+        if preclip:
+            pref = prefilter
+        elif prefilter <= -1:
+            pref = inputP
+        elif prefilter == 3:
+            expr = "x {i} < {peak} x {j} > 0 {peak} x {i} - {peak} {j} {i} - / * - ? ?".format(i=scale(16, peak), j=scale(75, peak), peak=peak)
+            pref = core.std.MaskedMerge(
+                _dfttest_preferring_dfttest2(inputP, tbsize=1, slocation=[0.0, 4.0, 0.2, 9.0, 1.0, 15.0], planes=planes),
+                inputP,
+                mvf.GetPlane(inputP, 0).std.Expr(expr=[expr]),
+                planes=planes,
+            )
+        elif prefilter >= 4:
+            if chroma:
+                pref = KNLMeansCL(inputP, d=1, a=1, h=7)
+            else:
+                pref = inputP.knlm.KNLMeansCL(d=1, a=1, h=7)
+        else:
+            pref = MinBlur(inputP, r=prefilter, planes=planes)
+    else:
+        pref = inputP
+
+    if not GlobalR:
+        pref = DitherLumaRebuild(pref, s0=Str, c=Amp, chroma=chroma)
+
+    if pelclip:
+        import nnedi3_resample as nnrs
+
+        cshift = 0.25 if pel == 2 else 0.375
+        pclip = nnrs.nnedi3_resample(pref, w * pel, h * pel, src_left=cshift, src_top=cshift, nns=4, mode="znedi3")
+        if not GlobalR:
+            pclip2 = nnrs.nnedi3_resample(inputP, w * pel, h * pel, src_left=cshift, src_top=cshift, nns=4, mode="znedi3")
+
+    global bv6, bv4, bv3, bv2, bv1, fv1, fv2, fv3, fv4, fv6
+    fine_blksize = halfblksize if RefineMotion else blksize
+    fine_overlap = halfoverlap if RefineMotion else overlap
+
+    if pelclip:
+        super_search = super_clip(core, pref, blksize=blksize, overlap=overlap, hpad=hpad, vpad=vpad, pel=pel, rfilter=4, pelclip=pclip)
+    else:
+        super_search = super_clip(core, pref, blksize=blksize, overlap=overlap, hpad=hpad, vpad=vpad, pel=pel, sharp=subpixel, rfilter=4)
+
+    if not GlobalR:
+        if pelclip:
+            super_render = super_clip(core, inputP, blksize=fine_blksize, overlap=fine_overlap, hpad=hpad, vpad=vpad, pel=pel, levels=1, pelclip=pclip2)
+            if RefineMotion:
+                Recalculate = super_clip(core, pref, blksize=fine_blksize, overlap=fine_overlap, hpad=hpad, vpad=vpad, pel=pel, levels=1, pelclip=pclip)
+        else:
+            super_render = super_clip(core, inputP, blksize=fine_blksize, overlap=fine_overlap, hpad=hpad, vpad=vpad, pel=pel, levels=1, sharp=subpixel)
+            if RefineMotion:
+                Recalculate = super_clip(core, pref, blksize=fine_blksize, overlap=fine_overlap, hpad=hpad, vpad=vpad, pel=pel, levels=1, sharp=subpixel)
+
+        analyse_args = dict(blksize=blksize, search=search, chroma=chroma, truemotion=truemotion, global_=MVglobal, overlap=overlap, dct=dct)
+        if RefineMotion:
+            recalculate_args = dict(thsad=halfthSAD, blksize=halfblksize, search=search, chroma=chroma, truemotion=truemotion, overlap=halfoverlap, dct=dct)
+
+        if interlaced:
+            if tr > 2:
+                bv6 = analyse(core, super_search, isb=True, delta=6, **analyse_args)
+                fv6 = analyse(core, super_search, isb=False, delta=6, **analyse_args)
+                if RefineMotion:
+                    bv6 = recalculate(core, Recalculate, bv6, **recalculate_args)
+                    fv6 = recalculate(core, Recalculate, fv6, **recalculate_args)
+            if tr > 1:
+                bv4 = analyse(core, super_search, isb=True, delta=4, **analyse_args)
+                fv4 = analyse(core, super_search, isb=False, delta=4, **analyse_args)
+                if RefineMotion:
+                    bv4 = recalculate(core, Recalculate, bv4, **recalculate_args)
+                    fv4 = recalculate(core, Recalculate, fv4, **recalculate_args)
+        else:
+            if tr > 2:
+                bv3 = analyse(core, super_search, isb=True, delta=3, **analyse_args)
+                fv3 = analyse(core, super_search, isb=False, delta=3, **analyse_args)
+                if RefineMotion:
+                    bv3 = recalculate(core, Recalculate, bv3, **recalculate_args)
+                    fv3 = recalculate(core, Recalculate, fv3, **recalculate_args)
+            bv1 = analyse(core, super_search, isb=True, delta=1, **analyse_args)
+            fv1 = analyse(core, super_search, isb=False, delta=1, **analyse_args)
+            if RefineMotion:
+                bv1 = recalculate(core, Recalculate, bv1, **recalculate_args)
+                fv1 = recalculate(core, Recalculate, fv1, **recalculate_args)
+        if interlaced or tr > 1:
+            bv2 = analyse(core, super_search, isb=True, delta=2, **analyse_args)
+            fv2 = analyse(core, super_search, isb=False, delta=2, **analyse_args)
+            if RefineMotion:
+                bv2 = recalculate(core, Recalculate, bv2, **recalculate_args)
+                fv2 = recalculate(core, Recalculate, fv2, **recalculate_args)
+    else:
+        super_render = super_search
+
+    if not GlobalO:
+        if interlaced:
+            if tr >= 3:
+                output = degrain(core, mfilter, super_render, [bv2, fv2, bv4, fv4, bv6, fv6], thsad=thSAD, thsadc=thSADC, plane=plane, limit=limit, limitc=limitc, thscd1=thSCD1, thscd2=thSCD2)
+            elif tr == 2:
+                output = degrain(core, mfilter, super_render, [bv2, fv2, bv4, fv4], thsad=thSAD, thsadc=thSADC, plane=plane, limit=limit, limitc=limitc, thscd1=thSCD1, thscd2=thSCD2)
+            else:
+                output = degrain(core, mfilter, super_render, [bv2, fv2], thsad=thSAD, thsadc=thSADC, plane=plane, limit=limit, limitc=limitc, thscd1=thSCD1, thscd2=thSCD2)
+        else:
+            if tr >= 3:
+                output = degrain(core, mfilter, super_render, [bv1, fv1, bv2, fv2, bv3, fv3], thsad=thSAD, thsadc=thSADC, plane=plane, limit=limit, limitc=limitc, thscd1=thSCD1, thscd2=thSCD2)
+            elif tr == 2:
+                output = degrain(core, mfilter, super_render, [bv1, fv1, bv2, fv2], thsad=thSAD, thsadc=thSADC, plane=plane, limit=limit, limitc=limitc, thscd1=thSCD1, thscd2=thSCD2)
+            else:
+                output = degrain(core, mfilter, super_render, [bv1, fv1], thsad=thSAD, thsadc=thSADC, plane=plane, limit=limit, limitc=limitc, thscd1=thSCD1, thscd2=thSCD2)
+
+    if not GlobalO and if0:
+        if if1:
+            if interlaced:
+                CClip = CClip.std.SeparateFields(tff=tff)
+        else:
+            CClip = inputP
+
+    if not GlobalO:
+        if if0:
+            if interlaced:
+                if ifC:
+                    return Weave(ContraSharpening(output, CClip, planes=planes), tff=tff)
+                return Weave(LSFmod(output, strength=contrasharp, source=CClip, Lmode=0, soothe=False, defaults="slow"), tff=tff)
+            if ifC:
+                return ContraSharpening(output, CClip, planes=planes)
+            return LSFmod(output, strength=contrasharp, source=CClip, Lmode=0, soothe=False, defaults="slow")
+        if interlaced:
+            return Weave(output, tff=tff)
+        return output
+    return input
+
+
+def QTGMC_MakeLossless(*args, mv_kernel="mvu", **kwargs):
+    _validate_mv_kernel("QTGMC_MakeLossless", mv_kernel)
+    if mv_kernel == "mv":
+        return _legacy_QTGMC_MakeLossless(*args, **kwargs)
+    return _QTGMC_MakeLossless_mvu(*args, **kwargs)
+
+
+def QTGMC_ApplySourceMatch(*args, mv_kernel="mvu", **kwargs):
+    _validate_mv_kernel("QTGMC_ApplySourceMatch", mv_kernel)
+    if mv_kernel == "mv":
+        return _legacy_QTGMC_ApplySourceMatch(*args, **kwargs)
+    return _QTGMC_ApplySourceMatch_mvu(*args, **kwargs)
+
+
+def QTGMC(*args, mv_kernel="mvu", **kwargs):
+    _validate_mv_kernel("QTGMC", mv_kernel)
+    if mv_kernel == "mv":
+        return _legacy_QTGMC(*args, **kwargs)
+    return _QTGMC_mvu(*args, **kwargs)
+
+
+def Stab(clp, dxmax=4, dymax=4, mirror=0, mv_kernel="mvu"):
+    _validate_mv_kernel("Stab", mv_kernel)
+    if mv_kernel == "mv":
+        return _legacy_Stab(clp, dxmax=dxmax, dymax=dymax, mirror=mirror)
+    return _Stab_mvu(clp, dxmax=dxmax, dymax=dymax, mirror=mirror)
+
+
+def MCTemporalDenoise(i, radius=None, pfMode=3, sigma=None, twopass=None, useTTmpSm=False, limit=None, limit2=None, post=0, chroma=None, refine=False, deblock=False, useQED=None, quant1=None,
+                      quant2=None, edgeclean=False, ECrad=None, ECthr=None, stabilize=None, maxr=None, TTstr=None, bwbh=None, owoh=None, blksize=None, overlap=None, bt=None, ncpu=1, thSAD=None,
+                      thSADC=None, thSAD2=None, thSADC2=None, thSCD1=None, thSCD2=None, truemotion=False, MVglobal=True, pel=None, pelsearch=None, search=4, searchparam=2, MVsharp=None, DCT=0, p=None,
+                      settings="low", mv_kernel="mvu"):
+    _validate_mv_kernel("MCTemporalDenoise", mv_kernel)
+    if mv_kernel == "mv":
+        return _legacy_MCTemporalDenoise(i, radius=radius, pfMode=pfMode, sigma=sigma, twopass=twopass, useTTmpSm=useTTmpSm, limit=limit, limit2=limit2, post=post, chroma=chroma, refine=refine, deblock=deblock,
+                                         useQED=useQED, quant1=quant1, quant2=quant2, edgeclean=edgeclean, ECrad=ECrad, ECthr=ECthr, stabilize=stabilize, maxr=maxr, TTstr=TTstr, bwbh=bwbh, owoh=owoh,
+                                         blksize=blksize, overlap=overlap, bt=bt, ncpu=ncpu, thSAD=thSAD, thSADC=thSADC, thSAD2=thSAD2, thSADC2=thSADC2, thSCD1=thSCD1, thSCD2=thSCD2, truemotion=truemotion,
+                                         MVglobal=MVglobal, pel=pel, pelsearch=pelsearch, search=search, searchparam=searchparam, MVsharp=MVsharp, DCT=DCT, p=p, settings=settings)
+    return _MCTemporalDenoise_mvu(i, radius=radius, pfMode=pfMode, sigma=sigma, twopass=twopass, useTTmpSm=useTTmpSm, limit=limit, limit2=limit2, post=post, chroma=chroma, refine=refine, deblock=deblock,
+                                  useQED=useQED, quant1=quant1, quant2=quant2, edgeclean=edgeclean, ECrad=ECrad, ECthr=ECthr, stabilize=stabilize, maxr=maxr, TTstr=TTstr, bwbh=bwbh, owoh=owoh,
+                                  blksize=blksize, overlap=overlap, bt=bt, ncpu=ncpu, thSAD=thSAD, thSADC=thSADC, thSAD2=thSAD2, thSADC2=thSADC2, thSCD1=thSCD1, thSCD2=thSCD2, truemotion=truemotion,
+                                  MVglobal=MVglobal, pel=pel, pelsearch=pelsearch, search=search, searchparam=searchparam, MVsharp=MVsharp, DCT=DCT, p=p, settings=settings)
+
+
+def SMDegrain(input, tr=2, thSAD=300, thSADC=None, RefineMotion=False, contrasharp=None, CClip=None, interlaced=False, tff=None, plane=4, Globals=0, pel=None, subpixel=2, prefilter=-1, mfilter=None,
+              blksize=None, overlap=None, search=4, truemotion=None, MVglobal=None, dct=0, limit=255, limitc=None, thSCD1=400, thSCD2=130, chroma=True, hpad=None, vpad=None, Str=1.0, Amp=0.0625,
+              mv_kernel="mvu"):
+    _validate_mv_kernel("SMDegrain", mv_kernel)
+    if mv_kernel == "mv":
+        return _legacy_SMDegrain(input, tr=tr, thSAD=thSAD, thSADC=thSADC, RefineMotion=RefineMotion, contrasharp=contrasharp, CClip=CClip, interlaced=interlaced, tff=tff, plane=plane, Globals=Globals,
+                                 pel=pel, subpixel=subpixel, prefilter=prefilter, mfilter=mfilter, blksize=blksize, overlap=overlap, search=search, truemotion=truemotion, MVglobal=MVglobal, dct=dct,
+                                 limit=limit, limitc=limitc, thSCD1=thSCD1, thSCD2=thSCD2, chroma=chroma, hpad=hpad, vpad=vpad, Str=Str, Amp=Amp)
+    return _SMDegrain_mvu(input, tr=tr, thSAD=thSAD, thSADC=thSADC, RefineMotion=RefineMotion, contrasharp=contrasharp, CClip=CClip, interlaced=interlaced, tff=tff, plane=plane, Globals=Globals,
+                          pel=pel, subpixel=subpixel, prefilter=prefilter, mfilter=mfilter, blksize=blksize, overlap=overlap, search=search, truemotion=truemotion, MVglobal=MVglobal, dct=dct,
+                          limit=limit, limitc=limitc, thSCD1=thSCD1, thSCD2=thSCD2, chroma=chroma, hpad=hpad, vpad=vpad, Str=Str, Amp=Amp)
+
+
+_set_mv_kernel_signature(QTGMC_MakeLossless, _legacy_QTGMC_MakeLossless)
+_set_mv_kernel_signature(QTGMC_ApplySourceMatch, _legacy_QTGMC_ApplySourceMatch)
+_set_mv_kernel_signature(QTGMC, _legacy_QTGMC)
