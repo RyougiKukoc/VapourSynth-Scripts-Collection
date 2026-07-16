@@ -62,6 +62,7 @@ Utility functions:
 from __future__ import annotations
 import inspect
 import importlib
+import warnings
 
 import math
 from functools import partial
@@ -6864,11 +6865,22 @@ def rfilter_old_to_new(value: int | None) -> int | None:
 def dct_old_to_satd(value: int | None) -> bool | None:
     if value is None:
         return None
-    if value == 0:
+    if 0 <= value <= 4:
+        if value != 0:
+            warnings.warn(
+                f"mvutensils has no exact equivalent for mvtools dct={value}; using satd=False as an approximation",
+                stacklevel=3,
+            )
         return False
     if value == 5:
         return True
-    raise ValueError(f"mvutensils has no exact equivalent for mvtools dct={value}")
+    if value > 5:
+        warnings.warn(
+            f"mvutensils has no exact equivalent for mvtools dct={value}; using satd=True as an approximation",
+            stacklevel=3,
+        )
+        return True
+    raise ValueError(f"mvutensils does not support negative mvtools dct={value}")
 
 
 def delta_old_to_new(isb: bool, delta: int) -> int:
