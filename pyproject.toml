@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vs-collection-rk"
-version = "0.1.1"
+version = "0.2.0"
 description = "Curated VapourSynth script collection with preserved per-script provenance"
 readme = "README.md"
 license = { text = "Mixed upstream licensing; see THIRD_PARTY.md and scripts/*/provenance.toml." }

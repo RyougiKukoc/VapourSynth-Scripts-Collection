@@ -7,7 +7,7 @@ from typing import Any
 
 
 __all__ = ["__version__", "bundled_scripts", "find_script", "load_registry"]
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 
 def load_registry() -> list[dict[str, Any]]:
