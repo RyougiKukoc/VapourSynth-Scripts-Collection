@@ -32,6 +32,12 @@ from functools import partial
 core = vs.core
 _DFTTEST2_UNSET = object()
 _dfttest2_module = _DFTTEST2_UNSET
+_NNEDI3_CORE_ORDER = ('nnedi3vk', 'nnedi3cl', 'znedi3')
+_NNEDI3_ALLOWED = {
+    'nnedi3vk': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device_index', 'list_device', 'num_streams'},
+    'nnedi3cl': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device', 'list_device', 'info'},
+    'znedi3': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'opt', 'int16_prescreener', 'int16_predictor', 'exp', 'show_mask'},
+}
 
 
 def _get_dfttest2():
@@ -68,6 +74,58 @@ def _dfttest_preferring_dfttest2(clip, **kwargs):
             return dfttest2.DFTTest(clip, backend=backend, **call_kwargs)
 
     return clip.dfttest.DFTTest(**call_kwargs)
+
+
+def _normalize_nnedi3_core(preferred):
+    if preferred is None:
+        return None
+
+    aliases = {
+        'auto': None,
+        'default': None,
+        'nnedi3vk': 'nnedi3vk',
+        'vk': 'nnedi3vk',
+        'nnedi3cl': 'nnedi3cl',
+        'cl': 'nnedi3cl',
+        'znedi3': 'znedi3',
+        'cpu': 'znedi3',
+        'nnedi3': 'znedi3',
+    }
+    key = preferred.lower()
+    if key not in aliases:
+        raise vs.Error(f'JIVTC: unsupported nnedi3_core={preferred!r}')
+    return aliases[key]
+
+
+def _ordered_nnedi3_cores(preferred):
+    preferred = _normalize_nnedi3_core(preferred)
+    if preferred is None:
+        return list(_NNEDI3_CORE_ORDER)
+    return [preferred] + [name for name in _NNEDI3_CORE_ORDER if name != preferred]
+
+
+def _call_nnedi3(clip, nnedi3_core=None, device=None, **kwargs):
+    errors = []
+
+    for name in _ordered_nnedi3_cores(nnedi3_core):
+        try:
+            if name == 'nnedi3vk':
+                call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+                if device is not None and 'device_index' not in call_kwargs:
+                    call_kwargs['device_index'] = device
+                return core.nnedi3vk.NNEDI3(clip, **call_kwargs)
+            if name == 'nnedi3cl':
+                call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+                if device is not None and 'device' not in call_kwargs:
+                    call_kwargs['device'] = device
+                return core.nnedi3cl.NNEDI3CL(clip, **call_kwargs)
+
+            call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+            return core.znedi3.nnedi3(clip, **call_kwargs)
+        except (AttributeError, RuntimeError, vs.Error) as exc:
+            errors.append(f'{name}: {exc}')
+
+    raise vs.Error('JIVTC: no nnedi3 backend could be initialized (' + '; '.join(dict.fromkeys(errors)) + ')')
 
 
 """
@@ -650,7 +708,7 @@ string bobber:         Can be used to supply a custom bobber.
 bool show (false):     If set to true, mark those frames that were recalculated.
 
 """
-def JIVTC(src, pattern, thr=10, draft=False, ivtced=None, bobber=None, show=False, tff=None):
+def JIVTC(src, pattern, thr=10, draft=False, ivtced=None, bobber=None, show=False, tff=None, nnedi3_core=None, device=None):
 
     def calculate(n, f, ivtced, bobbed):
         diffprev = f[0].props.EvenDiff
@@ -673,7 +731,7 @@ def JIVTC(src, pattern, thr=10, draft=False, ivtced=None, bobber=None, show=Fals
 
     ivtced = defivtc if ivtced is None else ivtced
     if bobber is None:
-        bobbed = core.yadifmod.Yadifmod(ivtced, edeint=core.nnedi3.nnedi3(ivtced, 2), order=0, mode=1)
+        bobbed = core.yadifmod.Yadifmod(ivtced, edeint=_call_nnedi3(ivtced, nnedi3_core=nnedi3_core, device=device, field=2), order=0, mode=1)
     else:
         bobbed = bobber(ivtced)
 

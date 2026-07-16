@@ -3,6 +3,78 @@ import vapoursynth as vs
 import havsfunc as haf
 import functools
 
+_NNEDI3_CORE_ORDER = ('nnedi3vk', 'nnedi3cl', 'znedi3')
+_NNEDI3_ALLOWED = {
+    'nnedi3vk': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device_index', 'list_device', 'num_streams'},
+    'nnedi3cl': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device', 'list_device', 'info'},
+    'znedi3': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'opt', 'int16_prescreener', 'int16_predictor', 'exp', 'show_mask'},
+}
+
+
+class _CoreProxy:
+    def __getattr__(self, name):
+        if name == 'rgvs':
+            try:
+                return getattr(vs.core, 'rgvs')
+            except AttributeError:
+                return getattr(vs.core, 'zsmooth')
+        return getattr(vs.core, name)
+
+
+_core = _CoreProxy()
+
+
+def _normalize_nnedi3_core(preferred):
+    if preferred is None:
+        return None
+
+    aliases = {
+        'auto': None,
+        'default': None,
+        'nnedi3vk': 'nnedi3vk',
+        'vk': 'nnedi3vk',
+        'nnedi3cl': 'nnedi3cl',
+        'cl': 'nnedi3cl',
+        'znedi3': 'znedi3',
+        'cpu': 'znedi3',
+        'nnedi3': 'znedi3',
+    }
+    key = preferred.lower()
+    if key not in aliases:
+        raise vs.Error(f'CSMOD: unsupported nnedi3_core={preferred!r}')
+    return aliases[key]
+
+
+def _ordered_nnedi3_cores(preferred):
+    preferred = _normalize_nnedi3_core(preferred)
+    if preferred is None:
+        return list(_NNEDI3_CORE_ORDER)
+    return [preferred] + [name for name in _NNEDI3_CORE_ORDER if name != preferred]
+
+
+def _call_nnedi3(clip, nnedi3_core=None, device=None, **kwargs):
+    errors = []
+
+    for name in _ordered_nnedi3_cores(nnedi3_core):
+        try:
+            if name == 'nnedi3vk':
+                call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+                if device is not None and 'device_index' not in call_kwargs:
+                    call_kwargs['device_index'] = device
+                return _core.nnedi3vk.NNEDI3(clip, **call_kwargs)
+            if name == 'nnedi3cl':
+                call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+                if device is not None and 'device' not in call_kwargs:
+                    call_kwargs['device'] = device
+                return _core.nnedi3cl.NNEDI3CL(clip, **call_kwargs)
+
+            call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+            return _core.znedi3.nnedi3(clip, **call_kwargs)
+        except (AttributeError, RuntimeError, vs.Error) as exc:
+            errors.append(f'{name}: {exc}')
+
+    raise vs.Error('CSMOD: no nnedi3 backend could be initialized (' + '; '.join(dict.fromkeys(errors)) + ')')
+
 def CSMOD(filtered, **args):
     """
         # CSMOD v0.2.5 ported from Contra-Sharpen mod 3.7 and Contra-Sharpen mod16 1.6
@@ -132,7 +204,7 @@ def CSMOD(filtered, **args):
         device=-1
         """
 
-    core = vs.core
+    core = _core
     # format check
     sColorFamily = filtered.format.color_family
     sSType = filtered.format.sample_type
@@ -546,6 +618,8 @@ def CSMOD(filtered, **args):
     tcanny = None
     opencl = args.get('opencl', True)
     device = args.get("device", -1)
+    nnedi3_core = args.get('nnedi3_core')
+    nnedi3_device = None if device is None or device < 0 else device
     if (opencl):
         try:
             tcanny = functools.partial(core.tcanny.TCannyCL, device=device)
@@ -672,27 +746,11 @@ def CSMOD(filtered, **args):
         hss = round(input.height * ss_hf / 8) * 8
         # nothing to say..
         def SS(src):
-            nnedi3 = None
-            if (opencl):
-                try:
-                    nnedi3 = functools.partial(core.nnedi3cl.NNEDI3CL,\
-                                               device=device)
-                except AttributeError:
-                    try:
-                        nnedi3 = core.znedi3.nnedi3
-                    except AttributeError:
-                        nnedi3 = core.nnedi3.nnedi3
-            else:
-                try:
-                    nnedi3 = core.znedi3.nnedi3
-                except AttributeError:
-                    nnedi3 = core.nnedi3.nnedi3
-
             if ss_hq != 1:
                 src = Depth(src, 8)
-                ss = nnedi3(src, qual=2, nsize=0, nns=3, pscrn=2 if ss_hq==0 else ss_hq, field=1, dh=True)
+                ss = _call_nnedi3(src, nnedi3_core=nnedi3_core, device=nnedi3_device, qual=2, nsize=0, nns=3, pscrn=2 if ss_hq==0 else ss_hq, field=1, dh=True)
             else:
-                ss = nnedi3(src, qual=2, field=1, dh=True, pscrn=1)
+                ss = _call_nnedi3(src, nnedi3_core=nnedi3_core, device=nnedi3_device, qual=2, field=1, dh=True, pscrn=1)
 
             fix = core.fmtc.resample(ss, sy=[-0.5, -0.5*(1<<ss.format.subsampling_h)], kernel="spline64")
 

@@ -5,9 +5,67 @@ import math
 
 
 __version__ = '2'
+_NNEDI3_CORE_ORDER = ('nnedi3vk', 'nnedi3cl', 'znedi3')
+_NNEDI3_ALLOWED = {
+    'nnedi3vk': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device_index', 'list_device', 'num_streams'},
+    'nnedi3cl': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device', 'list_device', 'info'},
+    'znedi3': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'opt', 'int16_prescreener', 'int16_predictor', 'exp', 'show_mask'},
+}
 
 
-def nnedi3_resample(input, target_width=None, target_height=None, src_left=None, src_top=None, src_width=None, src_height=None, csp=None, mats=None, matd=None, cplaces=None, cplaced=None, fulls=None, fulld=None, curves=None, curved=None, sigmoid=None, scale_thr=None, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, kernel=None, invks=False, taps=None, invkstaps=3, a1=None, a2=None, chromak_up=None, chromak_up_taps=None, chromak_up_a1=None, chromak_up_a2=None, chromak_down=None, chromak_down_invks=False, chromak_down_invkstaps=3, chromak_down_taps=None, chromak_down_a1=None, chromak_down_a2=None, mode=None, device=None):
+def _normalize_nnedi3_core(preferred):
+    if preferred is None:
+        return None
+
+    aliases = {
+        'auto': None,
+        'default': None,
+        'nnedi3vk': 'nnedi3vk',
+        'vk': 'nnedi3vk',
+        'nnedi3cl': 'nnedi3cl',
+        'cl': 'nnedi3cl',
+        'znedi3': 'znedi3',
+        'cpu': 'znedi3',
+        'nnedi3': 'znedi3',
+    }
+    key = preferred.lower()
+    if key not in aliases:
+        raise ValueError(f'nnedi3_resample: unsupported nnedi3_core={preferred!r}')
+    return aliases[key]
+
+
+def _ordered_nnedi3_cores(preferred):
+    preferred = _normalize_nnedi3_core(preferred)
+    if preferred is None:
+        return list(_NNEDI3_CORE_ORDER)
+    return [preferred] + [name for name in _NNEDI3_CORE_ORDER if name != preferred]
+
+
+def _call_nnedi3(clip, nnedi3_core=None, device=None, **kwargs):
+    errors = []
+
+    for name in _ordered_nnedi3_cores(nnedi3_core):
+        try:
+            if name == 'nnedi3vk':
+                call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+                if device is not None and 'device_index' not in call_kwargs:
+                    call_kwargs['device_index'] = device
+                return core.nnedi3vk.NNEDI3(clip, **call_kwargs)
+            if name == 'nnedi3cl':
+                call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+                if device is not None and 'device' not in call_kwargs:
+                    call_kwargs['device'] = device
+                return core.nnedi3cl.NNEDI3CL(clip, **call_kwargs)
+
+            call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+            return core.znedi3.nnedi3(clip, **call_kwargs)
+        except (AttributeError, RuntimeError, vs.Error) as exc:
+            errors.append(f'{name}: {exc}')
+
+    raise ValueError('nnedi3_resample: no nnedi3 backend could be initialized (' + '; '.join(dict.fromkeys(errors)) + ')')
+
+
+def nnedi3_resample(input, target_width=None, target_height=None, src_left=None, src_top=None, src_width=None, src_height=None, csp=None, mats=None, matd=None, cplaces=None, cplaced=None, fulls=None, fulld=None, curves=None, curved=None, sigmoid=None, scale_thr=None, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, kernel=None, invks=False, taps=None, invkstaps=3, a1=None, a2=None, chromak_up=None, chromak_up_taps=None, chromak_up_a1=None, chromak_up_a2=None, chromak_down=None, chromak_down_invks=False, chromak_down_invkstaps=3, chromak_down_taps=None, chromak_down_a1=None, chromak_down_a2=None, mode=None, device=None, nnedi3_core=None):
     funcName = 'nnedi3_resample'
     
     # Get property about input clip
@@ -206,8 +264,8 @@ def nnedi3_resample(input, target_width=None, target_height=None, src_left=None,
                 U = core.std.ShufflePlanes(last, [1], vs.GRAY)
                 V = core.std.ShufflePlanes(last, [2], vs.GRAY)
                 # Chroma up-scaling
-                U = nnedi3_resample_kernel(U, Y.width, Y.height, -sHCPlace / sHSubS, -sVCPlace / sVSubS, None, None, 1, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device)
-                V = nnedi3_resample_kernel(V, Y.width, Y.height, -sHCPlace / sHSubS, -sVCPlace / sVSubS, None, None, 1, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device)
+                U = nnedi3_resample_kernel(U, Y.width, Y.height, -sHCPlace / sHSubS, -sVCPlace / sVSubS, None, None, 1, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device, nnedi3_core=nnedi3_core)
+                V = nnedi3_resample_kernel(V, Y.width, Y.height, -sHCPlace / sHSubS, -sVCPlace / sVSubS, None, None, 1, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device, nnedi3_core=nnedi3_core)
                 # Merge planes
                 last = core.std.ShufflePlanes([Y, U, V], [0, 0, 0], last.format.color_family)
             else:
@@ -243,7 +301,7 @@ def nnedi3_resample(input, target_width=None, target_height=None, src_left=None,
         U = core.std.ShufflePlanes(last, [1], vs.GRAY)
         V = core.std.ShufflePlanes(last, [2], vs.GRAY)
         # Scale Y
-        Y = nnedi3_resample_kernel(Y, target_width, target_height, src_left, src_top, src_width, src_height, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device)
+        Y = nnedi3_resample_kernel(Y, target_width, target_height, src_left, src_top, src_width, src_height, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device, nnedi3_core=nnedi3_core)
         # Scale UV
         dCw = target_width // dHSubS
         dCh = target_height // dVSubS
@@ -251,8 +309,8 @@ def nnedi3_resample(input, target_width=None, target_height=None, src_left=None,
         dCsy = ((src_top - sVCPlace) * vScale + dVCPlace) / vScale / sVSubS
         dCsw = src_width / sHSubS
         dCsh = src_height / sVSubS
-        U = nnedi3_resample_kernel(U, dCw, dCh, dCsx, dCsy, dCsw, dCsh, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device)
-        V = nnedi3_resample_kernel(V, dCw, dCh, dCsx, dCsy, dCsw, dCsh, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device)
+        U = nnedi3_resample_kernel(U, dCw, dCh, dCsx, dCsy, dCsw, dCsh, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device, nnedi3_core=nnedi3_core)
+        V = nnedi3_resample_kernel(V, dCw, dCh, dCsx, dCsy, dCsw, dCsh, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, mode=mode, device=device, nnedi3_core=nnedi3_core)
         # Merge planes
         last = core.std.ShufflePlanes([Y, U, V], [0, 0, 0], last.format.color_family)
     
@@ -291,7 +349,7 @@ def nnedi3_resample(input, target_width=None, target_height=None, src_left=None,
     return last
 
 
-def nnedi3_resample_kernel(input, target_width=None, target_height=None, src_left=None, src_top=None, src_width=None, src_height=None, scale_thr=None, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, kernel=None, taps=None, a1=None, a2=None, invks=False, invkstaps=3, mode=None, device=None):
+def nnedi3_resample_kernel(input, target_width=None, target_height=None, src_left=None, src_top=None, src_width=None, src_height=None, scale_thr=None, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, kernel=None, taps=None, a1=None, a2=None, invks=False, invkstaps=3, mode=None, device=None, nnedi3_core=None):
 
     # Parameters of scaling
     if target_width is None:
@@ -346,16 +404,16 @@ def nnedi3_resample_kernel(input, target_width=None, target_height=None, src_lef
     
     if hResample:
         last = core.std.Transpose(last)
-        last = nnedi3_resample_kernel_vertical(last, target_width, src_left, src_width, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, invks, invkstaps, mode, device)
+        last = nnedi3_resample_kernel_vertical(last, target_width, src_left, src_width, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, invks, invkstaps, mode, device, nnedi3_core)
         last = core.std.Transpose(last)
     if vResample:
-        last = nnedi3_resample_kernel_vertical(last, target_height, src_top, src_height, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, invks, invkstaps, mode, device)
+        last = nnedi3_resample_kernel_vertical(last, target_height, src_top, src_height, scale_thr, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, kernel, taps, a1, a2, invks, invkstaps, mode, device, nnedi3_core)
     
     # Output
     return last
 
 
-def nnedi3_resample_kernel_vertical(input, target_height=None, src_top=None, src_height=None, scale_thr=None, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, kernel=None, taps=None, a1=None, a2=None, invks=False, invkstaps=3, mode=None, device=None):
+def nnedi3_resample_kernel_vertical(input, target_height=None, src_top=None, src_height=None, scale_thr=None, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, kernel=None, taps=None, a1=None, a2=None, invks=False, invkstaps=3, mode=None, device=None, nnedi3_core=None):
     
     # Parameters of scaling
     if target_height is None:
@@ -393,7 +451,7 @@ def nnedi3_resample_kernel_vertical(input, target_height=None, src_top=None, src
         return input
     
     # Scaling with nnedi3
-    last = nnedi3_rpow2_vertical(input, eTimes, 1, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, mode, device)
+    last = nnedi3_rpow2_vertical(input, eTimes, 1, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, mode, device, nnedi3_core)
     
     # Center shift calculation
     vShift = 0.5 if eTimes >= 1 else 0
@@ -416,47 +474,26 @@ def nnedi3_resample_kernel_vertical(input, target_height=None, src_top=None, src
     return last
 
 
-def nnedi3_rpow2_vertical(input, eTimes=1, field=1, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, mode=None, device=None):
+def nnedi3_rpow2_vertical(input, eTimes=1, field=1, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, mode=None, device=None, nnedi3_core=None):
     
     if eTimes >= 1:
-        last = nnedi3_dh(input, field, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, mode, device)
+        last = nnedi3_dh(input, field, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, mode, device, nnedi3_core)
         eTimes = eTimes - 1
         field = 0
     else:
         last = input
     
     if eTimes >= 1:
-        return nnedi3_rpow2_vertical(last, eTimes, field, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, mode, device)
+        return nnedi3_rpow2_vertical(last, eTimes, field, nsize, nns, qual, etype, pscrn, opt, int16_prescreener, int16_predictor, exp, mode, device, nnedi3_core)
     else:
         return last
 
 
-def nnedi3_dh(input, field=1, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, mode=None, device=None):
+def nnedi3_dh(input, field=1, nsize=None, nns=None, qual=None, etype=None, pscrn=None, opt=None, int16_prescreener=None, int16_predictor=None, exp=None, mode=None, device=None, nnedi3_core=None):
     nnedi3_args1 = dict(nsize=nsize, nns=nns, qual=qual, etype=etype, pscrn=pscrn)
     nnedi3_args2 = dict(opt=opt, int16_prescreener=int16_prescreener, int16_predictor=int16_predictor, exp=exp)
-
-    # check nnedi3 plugin installation
-    has_znedi3 = hasattr(core, 'znedi3')
-    has_nnedi3 = hasattr(core, 'nnedi3')
-    has_nnedi3cl = hasattr(core, 'nnedi3cl')
-    if not (has_znedi3 or has_nnedi3 or has_nnedi3cl):
-        raise ValueError(f'nnedi3_dh: znedi3, nnedi3 or nnedi3cl installation not found.')
-
-    # select default plugin
-    if mode is None:
-        mode = 'znedi3' if has_znedi3 else 'nnedi3' if has_nnedi3 else 'nnedi3cl' if has_nnedi3cl else None
-
-    # nnedi3 interpolation to double height
-    if mode == 'znedi3':
-        res = core.znedi3.nnedi3(input, field=field, dh=True, **nnedi3_args1, **nnedi3_args2)
-    elif mode == 'nnedi3':
-        res = core.nnedi3.nnedi3(input, field=field, dh=True, **nnedi3_args1, **nnedi3_args2)
-    elif mode == 'nnedi3cl':
-        res = core.nnedi3cl.NNEDI3CL(input, field=field, dh=True, **nnedi3_args1, device=device)
-    else:
-        raise ValueError(f'nnedi3_dh: Unsupported mode={mode}, should be znedi3, nnedi3 or nnedi3cl.')
-
-    return res
+    preferred = nnedi3_core if nnedi3_core is not None else mode
+    return _call_nnedi3(input, nnedi3_core=preferred, device=device, field=field, dh=True, **nnedi3_args1, **nnedi3_args2)
 
 
 ## Gamma conversion functions from HAvsFunc-r18

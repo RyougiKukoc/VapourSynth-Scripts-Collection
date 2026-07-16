@@ -71,10 +71,251 @@ import mvsfunc as mvf
 import vapoursynth as vs
 from vsutil import Dither, depth, fallback, get_depth, get_y, join, plane, scale_value
 
-core = vs.core
+
+class _CoreProxy:
+    def __getattr__(self, name: str) -> Any:
+        if name == 'rgvs':
+            try:
+                return getattr(vs.core, 'rgvs')
+            except AttributeError:
+                return getattr(vs.core, 'zsmooth')
+        return getattr(vs.core, name)
+
+
+core = _CoreProxy()
 
 _DFTTEST2_UNSET = object()
 _dfttest2_module: Any = _DFTTEST2_UNSET
+_AA_BACKEND_EXCEPTIONS = (AttributeError, TypeError, RuntimeError, vs.Error)
+_NNEDI3_CORE_ORDER = ('nnedi3vk', 'nnedi3cl', 'znedi3')
+_EEDI3_CORE_ORDER = ('eedi3vk2', 'vszipcl', 'vszip')
+
+
+def _normalize_aa_core(kind: str, name: Optional[str]) -> Optional[str]:
+    if name is None:
+        return None
+
+    normalized = name.strip().lower().replace('-', '').replace('_', '')
+    if normalized in ('', 'auto', 'default'):
+        return None
+
+    if kind == 'nnedi3':
+        aliases = {
+            'nnedi3vk': 'nnedi3vk',
+            'vk': 'nnedi3vk',
+            'nnedi3cl': 'nnedi3cl',
+            'cl': 'nnedi3cl',
+            'znedi3': 'znedi3',
+            'cpu': 'znedi3',
+        }
+    else:
+        aliases = {
+            'eedi3vk2': 'eedi3vk2',
+            'vk': 'eedi3vk2',
+            'vk2': 'eedi3vk2',
+            'vszipcl': 'vszipcl',
+            'zipcl': 'vszipcl',
+            'vszip': 'vszip',
+            'zip': 'vszip',
+        }
+
+    if normalized not in aliases:
+        raise vs.Error(f'{kind}: unsupported core={name!r}')
+
+    return aliases[normalized]
+
+
+def _ordered_aa_cores(order: Sequence[str], preferred: Optional[str]) -> list[str]:
+    names = list(order)
+    if preferred is not None:
+        names = [preferred] + [name for name in names if name != preferred]
+    return names
+
+
+def _filter_kwargs(kwargs: Mapping[str, Any], allowed: Sequence[str]) -> dict[str, Any]:
+    return {key: value for key, value in kwargs.items() if key in allowed and value is not None}
+
+
+def _extract_plane(clip: vs.VideoNode, plane_index: int) -> vs.VideoNode:
+    return clip if clip.format.num_planes == 1 else core.std.ShufflePlanes(clip, plane_index, vs.GRAY)
+
+
+def _normalize_planes(clip: vs.VideoNode, planes: Optional[Union[int, Sequence[int]]]) -> list[int]:
+    if clip.format.num_planes == 1:
+        return [0]
+    if planes is None:
+        return list(range(clip.format.num_planes))
+    if isinstance(planes, int):
+        return [planes]
+    return list(planes)
+
+
+def _bob_plane(clip: vs.VideoNode, field: int, dh: bool) -> vs.VideoNode:
+    if not dh:
+        return clip
+    return clip.resize.Bob(tff=bool(field & 1), filter_param_a=0, filter_param_b=0.5)
+
+
+class _NNEDI3Dispatcher:
+    _allowed = {
+        'nnedi3vk': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device_index', 'list_device', 'num_streams'},
+        'nnedi3cl': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device', 'list_device', 'info'},
+        'znedi3': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'opt', 'int16_prescreener', 'int16_predictor', 'exp', 'show_mask'},
+    }
+
+    def __init__(self, preferred: Optional[str] = None, device: Optional[int] = None) -> None:
+        self.preferred = _normalize_aa_core('nnedi3', preferred)
+        self.device = device
+        self.selected: Optional[str] = None
+
+    def _call_backend(self, name: str, clip: vs.VideoNode, kwargs: Mapping[str, Any]) -> vs.VideoNode:
+        if name == 'nnedi3vk':
+            backend = core.nnedi3vk.NNEDI3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+            if self.device is not None and 'device_index' not in call_kwargs:
+                call_kwargs['device_index'] = self.device
+        elif name == 'nnedi3cl':
+            backend = core.nnedi3cl.NNEDI3CL
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+            if self.device is not None and 'device' not in call_kwargs:
+                call_kwargs['device'] = self.device
+        elif name == 'znedi3':
+            backend = core.znedi3.nnedi3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+        else:
+            raise vs.Error(f'nnedi3: unsupported backend {name!r}')
+
+        return backend(clip, **call_kwargs)
+
+    def __call__(self, clip: vs.VideoNode, **kwargs: Any) -> vs.VideoNode:
+        errors = []
+        for name in _ordered_aa_cores(_NNEDI3_CORE_ORDER, self.preferred):
+            if self.selected is not None and name != self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, kwargs)
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+                if self.selected == name:
+                    self.selected = None
+
+        for name in _ordered_aa_cores(_NNEDI3_CORE_ORDER, self.preferred):
+            if self.selected is None or name == self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, kwargs)
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+
+        raise vs.Error('nnedi3: no backend could be initialized (' + '; '.join(dict.fromkeys(errors)) + ')')
+
+
+class _EEDI3Dispatcher:
+    _allowed = {
+        'eedi3vk2': {
+            'field', 'dh', 'planes', 'alpha', 'beta', 'gamma', 'nrad', 'mdis', 'hp', 'vcheck',
+            'vthresh0', 'vthresh1', 'vthresh2', 'sclip', 'mclip', 'device_index', 'list_device', 'num_streams'
+        },
+        'vszipcl': {
+            'field', 'dh', 'alpha', 'beta', 'gamma', 'nrad', 'mdis', 'hp', 'vcheck', 'vthresh0',
+            'vthresh1', 'vthresh2', 'sclip', 'device_id', 'list_device', 'num_streams', 'tune'
+        },
+        'vszip': {
+            'field', 'dh', 'alpha', 'beta', 'gamma', 'nrad', 'mdis', 'hp', 'vcheck', 'vthresh0',
+            'vthresh1', 'vthresh2', 'sclip', 'mclip'
+        },
+    }
+
+    def __init__(self, preferred: Optional[str] = None, device: Optional[int] = None) -> None:
+        self.preferred = _normalize_aa_core('eedi3', preferred)
+        self.device = device
+        self.selected: Optional[str] = None
+
+    def _call_backend(self, name: str, clip: vs.VideoNode, kwargs: Mapping[str, Any]) -> vs.VideoNode:
+        field = int(kwargs.get('field', 1))
+        dh = bool(kwargs.get('dh', True))
+        planes = _normalize_planes(clip, kwargs.get('planes'))
+        process_all_planes = planes == list(range(clip.format.num_planes))
+
+        if name == 'eedi3vk2':
+            backend = core.eedi3vk2.EEDI3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+            if self.device is not None and 'device_index' not in call_kwargs:
+                call_kwargs['device_index'] = self.device
+            return backend(clip, **call_kwargs)
+
+        if name == 'vszipcl':
+            backend = core.vszipcl.EEDI3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+            if kwargs.get('mclip') is not None:
+                raise vs.Error('EEDI3: vszipcl does not support mclip')
+            if self.device is not None and 'device_id' not in call_kwargs:
+                call_kwargs['device_id'] = self.device
+        elif name == 'vszip':
+            backend = core.vszip.EEDI3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+        else:
+            raise vs.Error(f'eedi3: unsupported backend {name!r}')
+
+        if process_all_planes or clip.format.num_planes == 1:
+            return backend(clip, **call_kwargs)
+
+        sclip = kwargs.get('sclip')
+        mclip = kwargs.get('mclip')
+        plane_set = set(planes)
+        outputs = []
+
+        for plane_index in range(clip.format.num_planes):
+            if plane_index in plane_set:
+                plane_kwargs = dict(call_kwargs)
+                plane_clip = _extract_plane(clip, plane_index)
+                if sclip is not None:
+                    plane_kwargs['sclip'] = _extract_plane(sclip, plane_index)
+                if mclip is not None and name == 'vszip':
+                    plane_kwargs['mclip'] = _extract_plane(mclip, plane_index)
+                outputs.append(backend(plane_clip, **plane_kwargs))
+            else:
+                outputs.append(_bob_plane(_extract_plane(clip, plane_index), field, dh))
+
+        return core.std.ShufflePlanes(outputs, [0] * clip.format.num_planes, clip.format.color_family)
+
+    def __call__(self, clip: vs.VideoNode, **kwargs: Any) -> vs.VideoNode:
+        errors = []
+        for name in _ordered_aa_cores(_EEDI3_CORE_ORDER, self.preferred):
+            if self.selected is not None and name != self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, kwargs)
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+                if self.selected == name:
+                    self.selected = None
+
+        for name in _ordered_aa_cores(_EEDI3_CORE_ORDER, self.preferred):
+            if self.selected is None or name == self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, kwargs)
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+
+        raise vs.Error('eedi3: no backend could be initialized (' + '; '.join(dict.fromkeys(errors)) + ')')
+
+
+def _get_nnedi3_dispatcher(nnedi3_core: Optional[str], device: Optional[int]) -> _NNEDI3Dispatcher:
+    return _NNEDI3Dispatcher(nnedi3_core, device)
+
+
+def _get_eedi3_dispatcher(eedi3_core: Optional[str], device: Optional[int]) -> _EEDI3Dispatcher:
+    return _EEDI3Dispatcher(eedi3_core, device)
 
 
 def _get_dfttest2() -> Any:
@@ -124,6 +365,7 @@ def daa(
     exp: Optional[int] = None,
     opencl: bool = False,
     device: Optional[int] = None,
+    nnedi3_core: Optional[str] = None,
 ) -> vs.VideoNode:
     '''
     Anti-aliasing with contra-sharpening by Didée.
@@ -134,14 +376,18 @@ def daa(
     if not isinstance(c, vs.VideoNode):
         raise vs.Error('daa: this is not a clip')
 
-    if opencl:
-        nnedi3 = partial(core.nnedi3cl.NNEDI3CL, nsize=nsize, nns=nns, qual=qual, pscrn=pscrn, device=device)
-    else:
-        nnedi3 = partial(
-            core.znedi3.nnedi3, nsize=nsize, nns=nns, qual=qual, pscrn=pscrn, int16_prescreener=int16_prescreener, int16_predictor=int16_predictor, exp=exp
-        )
-
-    nn = nnedi3(c, field=3)
+    nnedi3 = _get_nnedi3_dispatcher(nnedi3_core, device)
+    nn = nnedi3(
+        c,
+        field=3,
+        nsize=nsize,
+        nns=nns,
+        qual=qual,
+        pscrn=pscrn,
+        int16_prescreener=int16_prescreener,
+        int16_predictor=int16_predictor,
+        exp=exp,
+    )
     dbl = core.std.Merge(nn[::2], nn[1::2])
     dblD = core.std.MakeDiff(c, dbl)
     shrpD = core.std.MakeDiff(dbl, dbl.std.Convolution(matrix=[1, 1, 1, 1, 1, 1, 1, 1, 1] if c.width > 1100 else [1, 2, 1, 2, 4, 2, 1, 2, 1]))
@@ -160,12 +406,13 @@ def daa3mod(
     exp: Optional[int] = None,
     opencl: bool = False,
     device: Optional[int] = None,
+    nnedi3_core: Optional[str] = None,
 ) -> vs.VideoNode:
     if not isinstance(c1, vs.VideoNode):
         raise vs.Error('daa3mod: this is not a clip')
 
     c = c1.resize.Spline36(c1.width, c1.height * 3 // 2)
-    return daa(c, nsize, nns, qual, pscrn, int16_prescreener, int16_predictor, exp, opencl, device).resize.Spline36(c1.width, c1.height)
+    return daa(c, nsize, nns, qual, pscrn, int16_prescreener, int16_predictor, exp, opencl, device, nnedi3_core).resize.Spline36(c1.width, c1.height)
 
 
 def mcdaa3(
@@ -179,6 +426,7 @@ def mcdaa3(
     exp: Optional[int] = None,
     opencl: bool = False,
     device: Optional[int] = None,
+    nnedi3_core: Optional[str] = None,
 ) -> vs.VideoNode:
     if not isinstance(input, vs.VideoNode):
         raise vs.Error('mcdaa3: this is not a clip')
@@ -186,22 +434,16 @@ def mcdaa3(
     sup = input.hqdn3d.Hqdn3d().fft3dfilter.FFT3DFilter().mv.Super(sharp=1)
     fv1 = sup.mv.Analyse(isb=False, delta=1, truemotion=False, dct=2)
     fv2 = sup.mv.Analyse(isb=True, delta=1, truemotion=True, dct=2)
-    csaa = daa3mod(input, nsize, nns, qual, pscrn, int16_prescreener, int16_predictor, exp, opencl, device)
+    csaa = daa3mod(input, nsize, nns, qual, pscrn, int16_prescreener, int16_predictor, exp, opencl, device, nnedi3_core)
     momask1 = input.mv.Mask(fv1, ml=2, kind=1)
     momask2 = input.mv.Mask(fv2, ml=3, kind=1)
     momask = core.std.Merge(momask1, momask2)
     return core.std.MaskedMerge(input, csaa, momask)
 
 
-def EEDI3zig(clip: vs.VideoNode, **kwargs):
-    if 'planes' in kwargs:
-        del kwargs['planes']
-    if ob := clip.format.bits_per_sample != 32:
-        clip32 = clip.fmtc.bitdepth(bits=32)
-        aaed = core.vszip.EEDI3(clip32, **kwargs)
-        return aaed.fmtc.bitdepth(bits=ob)
-    else:
-        return core.vszip.EEDI3(clip, **kwargs)
+def EEDI3zig(clip: vs.VideoNode, **kwargs: Any) -> vs.VideoNode:
+    kwargs.pop('planes', None)
+    return core.vszip.EEDI3(clip, **kwargs)
     
     
 def santiag(
@@ -230,6 +472,8 @@ def santiag(
     typev: Optional[str] = None,
     opencl: bool = False,
     device: Optional[int] = None,
+    nnedi3_core: Optional[str] = None,
+    eedi3_core: Optional[str] = None,
 ) -> vs.VideoNode:
     '''
     santiag v1.6
@@ -247,16 +491,8 @@ def santiag(
         return c.resize.Spline36(fw, fh, src_top=0 if halfres else 0.5)
 
     def santiag_stronger(c: vs.VideoNode, strength: int, type: str) -> vs.VideoNode:
-        if opencl:
-            nnedi3 = partial(core.nnedi3cl.NNEDI3CL, nsize=nsize, nns=nns, qual=qual, pscrn=pscrn, device=device)
-        else:
-            nnedi3 = partial(
-                core.znedi3.nnedi3, nsize=nsize, nns=nns, qual=qual, pscrn=pscrn, int16_prescreener=int16_prescreener, int16_predictor=int16_predictor, exp=exp
-            )
-        if hasattr(core, "vszip") and hasattr(core.vszip, "EEDI3"):
-            eedi3 = partial(EEDI3zig, alpha=alpha, beta=beta, gamma=gamma, nrad=nrad, mdis=mdis, vcheck=vcheck)
-        else:
-            eedi3 = partial(core.eedi3m.EEDI3, alpha=alpha, beta=beta, gamma=gamma, nrad=nrad, mdis=mdis, vcheck=vcheck)
+        nnedi3 = _get_nnedi3_dispatcher(nnedi3_core, device)
+        eedi3 = _get_eedi3_dispatcher(eedi3_core, device)
 
         strength = max(strength, 0)
         field = strength % 2
@@ -269,14 +505,47 @@ def santiag(
         h = c.height
 
         if type == 'nnedi3':
-            return nnedi3(c, field=field, dh=dh)
+            return nnedi3(
+                c,
+                field=field,
+                dh=dh,
+                nsize=nsize,
+                nns=nns,
+                qual=qual,
+                pscrn=pscrn,
+                int16_prescreener=int16_prescreener,
+                int16_predictor=int16_predictor,
+                exp=exp,
+            )
         elif type == 'eedi2':
             if not dh:
                 c = c.resize.Point(w, h // 2, src_top=1 - field)
             return c.eedi2.EEDI2(field=field)
         elif type == 'eedi3':
-            sclip = nnedi3(c, field=field, dh=dh)
-            return eedi3(c, field=field, dh=dh, sclip=sclip)
+            sclip = nnedi3(
+                c,
+                field=field,
+                dh=dh,
+                nsize=nsize,
+                nns=nns,
+                qual=qual,
+                pscrn=pscrn,
+                int16_prescreener=int16_prescreener,
+                int16_predictor=int16_predictor,
+                exp=exp,
+            )
+            return eedi3(
+                c,
+                field=field,
+                dh=dh,
+                alpha=alpha,
+                beta=beta,
+                gamma=gamma,
+                nrad=nrad,
+                mdis=mdis,
+                vcheck=vcheck,
+                sclip=sclip,
+            )
         elif type == 'sangnom':
             if dh:
                 c = c.resize.Spline36(w, h * 2, src_top=-0.25)
@@ -614,9 +883,9 @@ def EdgeCleaner(c: vs.VideoNode, strength: int = 10, rep: bool = True, rmode: in
     if hot:
         final = core.rgvs.Repair(final, c, mode=2)
     if smode > 0:
-        clean = c.rgvs.RemoveGrain(mode=17)
+        clean = _removegrain(c, mode=17)
         diff = core.std.MakeDiff(c, clean)
-        mask = AvsPrewitt(diff.std.Levels(min_in=scale_value(40, 8, bits), max_in=scale_value(168, 8, bits), gamma=0.35).rgvs.RemoveGrain(mode=7)).std.Expr(
+        mask = AvsPrewitt(_removegrain(diff.std.Levels(min_in=scale_value(40, 8, bits), max_in=scale_value(168, 8, bits), gamma=0.35), mode=7)).std.Expr(
             expr=f'x {scale_value(4, 8, bits)} < 0 x {scale_value(16, 8, bits)} > {peak} x ? ?'
         )
         final = core.std.MaskedMerge(final, c, mask)
@@ -1238,6 +1507,8 @@ def _legacy_QTGMC(
     eedi3_args: Mapping[str, Any] = {},
     opencl: bool = False,
     device: Optional[int] = None,
+    nnedi3_core: Optional[str] = None,
+    eedi3_core: Optional[str] = None,
 ) -> vs.VideoNode:
     '''
     QTGMC 3.33
@@ -1992,7 +2263,22 @@ def _legacy_QTGMC(
         edi1 = EdiExt.resize.Point(w, h, src_top=(EdiExt.height - h) // 2, src_height=h)
     else:
         edi1 = QTGMC_Interpolate(
-            ediInput, InputType, EdiMode, NNSize, NNeurons, EdiQual, EdiMaxD, bobbed, ChromaEdi.lower(), TFF, nnedi3_args, eedi3_args, opencl, device
+            ediInput,
+            InputType,
+            EdiMode,
+            NNSize,
+            NNeurons,
+            EdiQual,
+            EdiMaxD,
+            bobbed,
+            ChromaEdi.lower(),
+            TFF,
+            nnedi3_args,
+            eedi3_args,
+            opencl,
+            device,
+            nnedi3_core,
+            eedi3_core,
         )
 
     # InputType=2,3: use motion mask to blend luma between original clip & reweaved clip based on ProgSADMask setting. Use chroma from original clip in any case
@@ -2085,6 +2371,8 @@ def _legacy_QTGMC(
             eedi3_args,
             opencl,
             device,
+            nnedi3_core,
+            eedi3_core,
         )
 
     # Lossless=2 - after preparing an interpolated, de-shimmered clip, restore the original source fields into it and clean up any artefacts
@@ -2115,7 +2403,7 @@ def _legacy_QTGMC(
     SVThinSc = SVThin * 6.0
     if SVThin > 0:
         expr = f'y x - {SVThinSc} * {neutral} +'
-        vertMedD = core.std.Expr([lossed1, lossed1.rgvs.VerticalCleaner(mode=1 if is_gray else [1, 0])], expr=expr if is_gray else [expr, ''])
+        vertMedD = core.std.Expr([lossed1, _vertical_cleaner(lossed1, mode=1 if is_gray else [1, 0])], expr=expr if is_gray else [expr, ''])
         vertMedD = vertMedD.std.Convolution(matrix=[1, 2, 1], planes=0, mode='h')
         expr = f'y {neutral} - abs x {neutral} - abs > y {neutral} ?'
         neighborD = core.std.Expr([vertMedD, vertMedD.std.Convolution(matrix=matrix, planes=0)], expr=expr if is_gray else [expr, ''])
@@ -2301,6 +2589,8 @@ def QTGMC_Interpolate(
     eedi3_args: Mapping[str, Any] = {},
     opencl: bool = False,
     device: Optional[int] = None,
+    nnedi3_core: Optional[str] = None,
+    eedi3_core: Optional[str] = None,
 ) -> vs.VideoNode:
     '''
     Interpolate input clip using method given in EdiMode. Use Fallback or Bob as result if mode not in list. If ChromaEdi string if set then interpolate chroma
@@ -2312,31 +2602,33 @@ def QTGMC_Interpolate(
     planes = [0, 1, 2] if ChromaEdi == '' and not is_gray else [0]
 
     field = 3 if TFF else 2
-
-    if opencl:
-        nnedi3 = partial(core.nnedi3cl.NNEDI3CL, field=field, device=device, **nnedi3_args)
-    else:
-        nnedi3 = partial(core.znedi3.nnedi3, field=field, **nnedi3_args)
-    if hasattr(core, "vszip") and hasattr(core.vszip, "EEDI3"):
-        eedi3 = partial(EEDI3zig, field=field, mdis=EdiMaxD, device=device, **eedi3_args)
-    else:
-        eedi3 = partial(core.eedi3m.EEDI3, field=field, planes=planes, mdis=EdiMaxD, **eedi3_args)
+    nnedi3_extra_args = {key: value for key, value in nnedi3_args.items() if key not in {'field', 'dh', 'planes'}}
+    eedi3_extra_args = {key: value for key, value in eedi3_args.items() if key not in {'field', 'dh', 'planes', 'mdis', 'sclip'}}
+    nnedi3 = _get_nnedi3_dispatcher(nnedi3_core, device)
+    eedi3 = _get_eedi3_dispatcher(eedi3_core, device)
 
     if InputType == 1:
         return Input
     elif EdiMode == 'nnedi3':
-        interp = nnedi3(Input, planes=planes, nsize=NNSize, nns=NNeurons, qual=EdiQual)
+        interp = nnedi3(Input, field=field, planes=planes, nsize=NNSize, nns=NNeurons, qual=EdiQual, **nnedi3_extra_args)
     elif EdiMode == 'eedi3+nnedi3':
-        interp = eedi3(Input, sclip=nnedi3(Input, planes=planes, nsize=NNSize, nns=NNeurons, qual=EdiQual))
+        interp = eedi3(
+            Input,
+            field=field,
+            planes=planes,
+            mdis=EdiMaxD,
+            sclip=nnedi3(Input, field=field, planes=planes, nsize=NNSize, nns=NNeurons, qual=EdiQual, **nnedi3_extra_args),
+            **eedi3_extra_args,
+        )
     elif EdiMode == 'eedi3':
-        interp = eedi3(Input)
+        interp = eedi3(Input, field=field, planes=planes, mdis=EdiMaxD, **eedi3_extra_args)
     elif EdiMode == 'bwdif':
         interp = Input.bwdif.Bwdif(field=field)
     else:
         interp = fallback(Fallback, Input.resize.Bob(tff=TFF, filter_param_a=0, filter_param_b=0.5))
 
     if ChromaEdi == 'nnedi3':
-        interpuv = nnedi3(Input, planes=[1, 2], nsize=4, nns=0, qual=1)
+        interpuv = nnedi3(Input, field=field, planes=[1, 2], nsize=4, nns=0, qual=1, **nnedi3_extra_args)
     elif ChromaEdi == 'bwdif':
         interpuv = Input.bwdif.Bwdif(field=field)
     elif ChromaEdi == 'bob':
@@ -2469,13 +2761,13 @@ def _legacy_QTGMC_MakeLossless(Input: vs.VideoNode, Source: vs.VideoNode, InputT
     processed = Weave(core.std.Interleave([srcFields, newFields]).std.SelectEvery(cycle=4, offsets=[0, 1, 3, 2]), tff=TFF)
 
     # Clean some of the artefacts caused by the above - creating a second version of the "new" fields
-    vertMedian = processed.rgvs.VerticalCleaner(mode=1)
+    vertMedian = _vertical_cleaner(processed, mode=1)
     vertMedDiff = core.std.MakeDiff(processed, vertMedian)
     vmNewDiff1 = vertMedDiff.std.SeparateFields(tff=TFF).std.SelectEvery(cycle=4, offsets=[1, 2])
     vmNewDiff2 = core.std.Expr(
-        [vmNewDiff1.rgvs.VerticalCleaner(mode=1), vmNewDiff1], expr=f'x {neutral} - y {neutral} - * 0 < {neutral} x {neutral} - abs y {neutral} - abs < x y ? ?'
+        [_vertical_cleaner(vmNewDiff1, mode=1), vmNewDiff1], expr=f'x {neutral} - y {neutral} - * 0 < {neutral} x {neutral} - abs y {neutral} - abs < x y ? ?'
     )
-    vmNewDiff3 = core.rgvs.Repair(vmNewDiff2, vmNewDiff2.rgvs.RemoveGrain(mode=2), mode=1)
+    vmNewDiff3 = _repair(vmNewDiff2, _removegrain(vmNewDiff2, mode=2), mode=1)
 
     # Reweave final result
     return Weave(core.std.Interleave([srcFields, core.std.MakeDiff(newFields, vmNewDiff3)]).std.SelectEvery(cycle=4, offsets=[0, 1, 3, 2]), tff=TFF)
@@ -2515,6 +2807,8 @@ def _legacy_QTGMC_ApplySourceMatch(
     eedi3_args: Mapping[str, Any] = {},
     opencl: bool = False,
     device: Optional[int] = None,
+    nnedi3_core: Optional[str] = None,
+    eedi3_core: Optional[str] = None,
 ) -> vs.VideoNode:
     '''
     Source-match, a three stage process that takes the difference between deinterlaced input and the original interlaced source, to shift the input more towards
@@ -2553,6 +2847,8 @@ def _legacy_QTGMC_ApplySourceMatch(
             eedi3_args=eedi3_args,
             opencl=opencl,
             device=device,
+            nnedi3_core=nnedi3_core,
+            eedi3_core=eedi3_core,
         )
         if MatchTR1 > 0:
             match1Super = match1Edi.mv.Super(pel=SubPel, sharp=SubPelInterp, levels=1, hpad=hpad, vpad=vpad)
@@ -2600,6 +2896,8 @@ def _legacy_QTGMC_ApplySourceMatch(
             eedi3_args=eedi3_args,
             opencl=opencl,
             device=device,
+            nnedi3_core=nnedi3_core,
+            eedi3_core=eedi3_core,
         )
         if MatchTR2 > 0:
             match2Super = match2Edi.mv.Super(pel=SubPel, sharp=SubPelInterp, levels=1, hpad=hpad, vpad=vpad)
@@ -4491,7 +4789,7 @@ def STPresso(
         elif RGmode == 20:
             bzz = clp.std.Convolution(matrix=[1, 1, 1, 1, 1, 1, 1, 1, 1], planes=planes)
         else:
-            bzz = clp.rgvs.RemoveGrain(mode=RGmode)
+            bzz = _removegrain(clp, mode=RGmode)
 
     last = core.std.Expr([clp, bzz], expr=[expr if i in planes else '' for i in plane_range])
 
@@ -6946,15 +7244,15 @@ def _set_mv_kernel_signature(wrapper, reference) -> None:
 
 
 def _repair(clip, repair_clip, mode):
-    return core.zsmooth.Repair(clip, repair_clip, mode=mode)
+    return core.rgvs.Repair(clip, repair_clip, mode=mode)
 
 
 def _removegrain(clip, mode):
-    return core.zsmooth.RemoveGrain(clip, mode=mode)
+    return core.rgvs.RemoveGrain(clip, mode=mode)
 
 
 def _vertical_cleaner(clip, mode):
-    return core.zsmooth.VerticalCleaner(clip, mode=mode)
+    return core.rgvs.VerticalCleaner(clip, mode=mode)
 
 
 def _super_from_vectors(clip, *vectors, pel=2, sharp=2, levels=1, hpad=16, vpad=16, rfilter=2, pelclip=None, chroma=None):

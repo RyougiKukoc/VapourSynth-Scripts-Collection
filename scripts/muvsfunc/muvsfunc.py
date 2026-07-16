@@ -100,6 +100,8 @@ _has_lexpr_lutspa: bool = (
 
 _DFTTEST2_UNSET = object()
 _dfttest2_module: Any = _DFTTEST2_UNSET
+_AA_BACKEND_EXCEPTIONS = (AttributeError, TypeError, RuntimeError, vs.Error)
+_NNEDI3_CORE_ORDER = ('nnedi3vk', 'nnedi3cl', 'znedi3')
 
 
 def _get_dfttest2() -> Any:
@@ -141,8 +143,83 @@ def _dfttest_preferring_dfttest2(clip: vs.VideoNode, **kwargs: Any) -> vs.VideoN
 PlanesType = Optional[Union[int, Sequence[int]]]
 VSFuncType = Union[vs.Func, Callable[..., vs.VideoNode]]
 
-# Function alias
-nnedi3: Optional[Callable[..., vs.VideoNode]] = core.nnedi3.nnedi3 if hasattr(core, "nnedi3") else None
+def _normalize_nnedi3_core(name: Optional[str]) -> Optional[str]:
+    if name is None:
+        return None
+    normalized = name.strip().lower().replace('-', '').replace('_', '')
+    if normalized in ('', 'auto', 'default'):
+        return None
+    aliases = {
+        'nnedi3vk': 'nnedi3vk',
+        'vk': 'nnedi3vk',
+        'nnedi3cl': 'nnedi3cl',
+        'cl': 'nnedi3cl',
+        'znedi3': 'znedi3',
+        'cpu': 'znedi3',
+    }
+    if normalized not in aliases:
+        raise ValueError(f'nnedi3: unsupported core={name!r}')
+    return aliases[normalized]
+
+
+def _ordered_nnedi3_cores(preferred: Optional[str]) -> list[str]:
+    names = list(_NNEDI3_CORE_ORDER)
+    if preferred is not None:
+        names = [preferred] + [name for name in names if name != preferred]
+    return names
+
+
+class _NNEDI3Dispatcher:
+    _allowed = {
+        'nnedi3vk': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device_index', 'list_device', 'num_streams'},
+        'nnedi3cl': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device', 'list_device', 'info'},
+        'znedi3': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'opt', 'int16_prescreener', 'int16_predictor', 'exp', 'show_mask'},
+    }
+
+    def __init__(self, preferred: Optional[str] = None, device: Optional[int] = None) -> None:
+        self.preferred = _normalize_nnedi3_core(preferred)
+        self.device = device
+        self.selected: Optional[str] = None
+
+    def _call_backend(self, name: str, clip: vs.VideoNode, kwargs: Dict[str, Any]) -> vs.VideoNode:
+        if name == 'nnedi3vk':
+            backend = core.nnedi3vk.NNEDI3
+            call_kwargs = {key: value for key, value in kwargs.items() if key in self._allowed[name] and value is not None}
+            if self.device is not None and 'device_index' not in call_kwargs:
+                call_kwargs['device_index'] = self.device
+        elif name == 'nnedi3cl':
+            backend = core.nnedi3cl.NNEDI3CL
+            call_kwargs = {key: value for key, value in kwargs.items() if key in self._allowed[name] and value is not None}
+            if self.device is not None and 'device' not in call_kwargs:
+                call_kwargs['device'] = self.device
+        else:
+            backend = core.znedi3.nnedi3
+            call_kwargs = {key: value for key, value in kwargs.items() if key in self._allowed['znedi3'] and value is not None}
+        return backend(clip, **call_kwargs)
+
+    def __call__(self, clip: vs.VideoNode, **kwargs: Any) -> vs.VideoNode:
+        errors = []
+        for name in _ordered_nnedi3_cores(self.preferred):
+            if self.selected is not None and name != self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, dict(kwargs))
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+                if self.selected == name:
+                    self.selected = None
+        for name in _ordered_nnedi3_cores(self.preferred):
+            if self.selected is None or name == self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, dict(kwargs))
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+        raise RuntimeError('nnedi3 backend initialization failed: ' + '; '.join(dict.fromkeys(errors)))
 
 
 def LDMerge(flt_h: vs.VideoNode, flt_v: vs.VideoNode, src: vs.VideoNode, mrad: int = 0,
@@ -1058,7 +1135,7 @@ def ediaa(a: vs.VideoNode) -> vs.VideoNode:
     return last
 
 
-def nnedi3aa(a: vs.VideoNode) -> vs.VideoNode:
+def nnedi3aa(a: vs.VideoNode, nnedi3_core: Optional[str] = None, device: Optional[int] = None) -> vs.VideoNode:
     """Using nnedi3 (Emulgator):
 
     Read the document of Avisynth version for more details.
@@ -1070,11 +1147,9 @@ def nnedi3aa(a: vs.VideoNode) -> vs.VideoNode:
     if not isinstance(a, vs.VideoNode):
         raise TypeError(funcName + ': \"a\" must be a clip!')
 
-    if nnedi3 and callable(nnedi3):
-        last = nnedi3(a, field=1, dh=True).std.Transpose()
-        last = nnedi3(last, field=1, dh=True).std.Transpose()
-    else:
-        raise RuntimeError("nnedi3 not found")
+    nnedi3 = _NNEDI3Dispatcher(nnedi3_core, device)
+    last = nnedi3(a, field=1, dh=True).std.Transpose()
+    last = nnedi3(last, field=1, dh=True).std.Transpose()
     last = core.resize.Spline36(last, a.width, a.height, src_left=-0.5, src_top=-0.5)
 
     return last
@@ -1119,7 +1194,8 @@ def maa(input: vs.VideoNode) -> vs.VideoNode:
 
 def SharpAAMcmod(orig: vs.VideoNode, dark: float = 0.2, thin: int = 10, sharp: int = 150,
                  smooth: int = -1, stabilize: bool = False, tradius: int = 2, aapel: int = 1,
-                 aaov: Optional[int] = None, aablk: Optional[int] = None, aatype: str = 'nnedi3'
+                 aaov: Optional[int] = None, aablk: Optional[int] = None, aatype: str = 'nnedi3',
+                 nnedi3_core: Optional[str] = None, device: Optional[int] = None
                  ) -> vs.VideoNode:
     """High quality MoComped AntiAliasing script.
 
@@ -1207,7 +1283,7 @@ def SharpAAMcmod(orig: vs.VideoNode, dark: float = 0.2, thin: int = 10, sharp: i
     elif aatype == 'eedi2':
         aa = ediaa(preaa)
     elif aatype == 'nnedi3':
-        aa = nnedi3aa(preaa)
+        aa = nnedi3aa(preaa, nnedi3_core=nnedi3_core, device=device)
     else:
         raise ValueError(funcName + ': valid values of \"aatype\" are \"sangnom\", \"eedi2\" and \"nnedi3\"!')
 

@@ -31,6 +31,237 @@ __all__ = [
     'deltaE94',
 ]
 
+_AA_BACKEND_EXCEPTIONS = (AttributeError, TypeError, RuntimeError, vs.Error)
+_NNEDI3_CORE_ORDER = ('nnedi3vk', 'nnedi3cl', 'znedi3')
+_EEDI3_CORE_ORDER = ('eedi3vk2', 'vszipcl', 'vszip')
+
+
+def _normalize_aa_core(kind: str, name: Optional[str]) -> Optional[str]:
+    if name is None:
+        return None
+
+    normalized = name.strip().lower().replace('-', '').replace('_', '')
+    if normalized in ('', 'auto', 'default'):
+        return None
+
+    if kind == 'nnedi3':
+        aliases = {
+            'nnedi3vk': 'nnedi3vk',
+            'vk': 'nnedi3vk',
+            'nnedi3cl': 'nnedi3cl',
+            'cl': 'nnedi3cl',
+            'znedi3': 'znedi3',
+            'cpu': 'znedi3',
+        }
+    else:
+        aliases = {
+            'eedi3vk2': 'eedi3vk2',
+            'vk': 'eedi3vk2',
+            'vk2': 'eedi3vk2',
+            'vszipcl': 'vszipcl',
+            'zipcl': 'vszipcl',
+            'vszip': 'vszip',
+            'zip': 'vszip',
+        }
+
+    if normalized not in aliases:
+        raise ValueError(f'{kind}: unsupported core={name!r}')
+
+    return aliases[normalized]
+
+
+def _ordered_aa_cores(order: tuple[str, ...], preferred: Optional[str]) -> list[str]:
+    names = list(order)
+    if preferred is not None:
+        names = [preferred] + [name for name in names if name != preferred]
+    return names
+
+
+def _filter_kwargs(kwargs: Dict[str, Any], allowed: set[str]) -> Dict[str, Any]:
+    return {key: value for key, value in kwargs.items() if key in allowed and value is not None}
+
+
+def _extract_plane(clip: vs.VideoNode, plane_index: int) -> vs.VideoNode:
+    return clip if clip.format.num_planes == 1 else core.std.ShufflePlanes(clip, plane_index, vs.GRAY)
+
+
+def _normalize_planes(clip: vs.VideoNode, planes: Optional[Union[int, Sequence[int]]]) -> list[int]:
+    if clip.format.num_planes == 1:
+        return [0]
+    if planes is None:
+        return list(range(clip.format.num_planes))
+    if isinstance(planes, int):
+        return [planes]
+    return list(planes)
+
+
+def _bob_plane(clip: vs.VideoNode, field: int, dh: bool) -> vs.VideoNode:
+    if not dh:
+        return clip
+    return clip.resize.Bob(tff=bool(field & 1), filter_param_a=0, filter_param_b=0.5)
+
+
+class _NNEDI3Dispatcher:
+    _allowed = {
+        'nnedi3vk': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device_index', 'list_device', 'num_streams'},
+        'nnedi3cl': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device', 'list_device', 'info'},
+        'znedi3': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'opt', 'int16_prescreener', 'int16_predictor', 'exp', 'show_mask'},
+    }
+
+    def __init__(self, preferred: Optional[str], device: Optional[int], kwargs: Dict[str, Any]) -> None:
+        self.preferred = _normalize_aa_core('nnedi3', preferred)
+        self.device = device
+        self.kwargs = kwargs
+        self.selected: Optional[str] = None
+
+    def _call_backend(self, name: str, clip: vs.VideoNode, kwargs: Dict[str, Any]) -> vs.VideoNode:
+        if name == 'nnedi3vk':
+            backend = core.nnedi3vk.NNEDI3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+            if self.device is not None and 'device_index' not in call_kwargs:
+                call_kwargs['device_index'] = self.device
+        elif name == 'nnedi3cl':
+            backend = core.nnedi3cl.NNEDI3CL
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+            if self.device is not None and 'device' not in call_kwargs:
+                call_kwargs['device'] = self.device
+        elif name == 'znedi3':
+            backend = core.znedi3.nnedi3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+        else:
+            raise ValueError(f'nnedi3: unsupported backend {name!r}')
+
+        return backend(clip, **call_kwargs)
+
+    def __call__(self, clip: vs.VideoNode, **call_kwargs: Any) -> vs.VideoNode:
+        kwargs = dict(self.kwargs)
+        kwargs.update(call_kwargs)
+        errors = []
+
+        for name in _ordered_aa_cores(_NNEDI3_CORE_ORDER, self.preferred):
+            if self.selected is not None and name != self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, kwargs)
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+                if self.selected == name:
+                    self.selected = None
+
+        for name in _ordered_aa_cores(_NNEDI3_CORE_ORDER, self.preferred):
+            if self.selected is None or name == self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, kwargs)
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+
+        raise vs.Error('nnedi3: no backend could be initialized (' + '; '.join(dict.fromkeys(errors)) + ')')
+
+
+class _EEDI3Dispatcher:
+    _allowed = {
+        'eedi3vk2': {
+            'field', 'dh', 'planes', 'alpha', 'beta', 'gamma', 'nrad', 'mdis', 'hp', 'vcheck',
+            'vthresh0', 'vthresh1', 'vthresh2', 'sclip', 'mclip', 'device_index', 'list_device', 'num_streams'
+        },
+        'vszipcl': {
+            'field', 'dh', 'alpha', 'beta', 'gamma', 'nrad', 'mdis', 'hp', 'vcheck', 'vthresh0',
+            'vthresh1', 'vthresh2', 'sclip', 'device_id', 'list_device', 'num_streams', 'tune'
+        },
+        'vszip': {
+            'field', 'dh', 'alpha', 'beta', 'gamma', 'nrad', 'mdis', 'hp', 'vcheck', 'vthresh0',
+            'vthresh1', 'vthresh2', 'sclip', 'mclip'
+        },
+    }
+
+    def __init__(self, preferred: Optional[str], device: Optional[int], kwargs: Dict[str, Any]) -> None:
+        self.preferred = _normalize_aa_core('eedi3', preferred)
+        self.device = device
+        self.kwargs = kwargs
+        self.selected: Optional[str] = None
+
+    def _call_backend(self, name: str, clip: vs.VideoNode, kwargs: Dict[str, Any]) -> vs.VideoNode:
+        field = int(kwargs.get('field', 1))
+        dh = bool(kwargs.get('dh', True))
+        planes = _normalize_planes(clip, kwargs.get('planes'))
+        process_all_planes = planes == list(range(clip.format.num_planes))
+
+        if name == 'eedi3vk2':
+            backend = core.eedi3vk2.EEDI3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+            if self.device is not None and 'device_index' not in call_kwargs:
+                call_kwargs['device_index'] = self.device
+            return backend(clip, **call_kwargs)
+
+        if name == 'vszipcl':
+            backend = core.vszipcl.EEDI3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+            if kwargs.get('mclip') is not None:
+                raise vs.Error('EEDI3: vszipcl does not support mclip')
+            if self.device is not None and 'device_id' not in call_kwargs:
+                call_kwargs['device_id'] = self.device
+        elif name == 'vszip':
+            backend = core.vszip.EEDI3
+            call_kwargs = _filter_kwargs(kwargs, self._allowed[name])
+        else:
+            raise ValueError(f'eedi3: unsupported backend {name!r}')
+
+        if process_all_planes or clip.format.num_planes == 1:
+            return backend(clip, **call_kwargs)
+
+        sclip = kwargs.get('sclip')
+        mclip = kwargs.get('mclip')
+        plane_set = set(planes)
+        outputs = []
+
+        for plane_index in range(clip.format.num_planes):
+            if plane_index in plane_set:
+                plane_kwargs = dict(call_kwargs)
+                plane_clip = _extract_plane(clip, plane_index)
+                if sclip is not None:
+                    plane_kwargs['sclip'] = _extract_plane(sclip, plane_index)
+                if mclip is not None and name == 'vszip':
+                    plane_kwargs['mclip'] = _extract_plane(mclip, plane_index)
+                outputs.append(backend(plane_clip, **plane_kwargs))
+            else:
+                outputs.append(_bob_plane(_extract_plane(clip, plane_index), field, dh))
+
+        return core.std.ShufflePlanes(outputs, [0] * clip.format.num_planes, clip.format.color_family)
+
+    def __call__(self, clip: vs.VideoNode, **call_kwargs: Any) -> vs.VideoNode:
+        kwargs = dict(self.kwargs)
+        kwargs.update(call_kwargs)
+        errors = []
+
+        for name in _ordered_aa_cores(_EEDI3_CORE_ORDER, self.preferred):
+            if self.selected is not None and name != self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, kwargs)
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+                if self.selected == name:
+                    self.selected = None
+
+        for name in _ordered_aa_cores(_EEDI3_CORE_ORDER, self.preferred):
+            if self.selected is None or name == self.selected:
+                continue
+            try:
+                result = self._call_backend(name, clip, kwargs)
+                self.selected = name
+                return result
+            except _AA_BACKEND_EXCEPTIONS as exc:
+                errors.append(f'{name}: {exc}')
+
+        raise vs.Error('eedi3: no backend could be initialized (' + '; '.join(dict.fromkeys(errors)) + ')')
+
 class ResClip:
     '''
     Wrapper of vs.VideoNode with cropping args for resampling. We should reduce the number of resizer calls!
@@ -366,24 +597,34 @@ def fdescale(
 ### AA related wrappers
 
 
-def get_nnedi3(opencl: bool = False, **nnedi3_args: Any) -> Callable[..., vs.VideoNode]:
+def get_nnedi3(
+    opencl: bool = False,
+    nnedi3_core: Optional[str] = None,
+    device: Optional[int] = None,
+    **nnedi3_args: Any
+) -> Callable[..., vs.VideoNode]:
     args = dict(nsize=4, nns=4, qual=2, pscrn=1)
     args.update(nnedi3_args)
-    return partial(core.nnedi3cl.NNEDI3CL if opencl else core.znedi3.nnedi3, **args)
+    return _NNEDI3Dispatcher(nnedi3_core, device, args)
 
 
 def get_nnedi3cl(**nnedi3_args: Any) -> Callable[..., vs.VideoNode]:
-    return get_nnedi3(opencl=True, **nnedi3_args)
+    return get_nnedi3(nnedi3_core='nnedi3cl', **nnedi3_args)
 
 
-def get_eedi3(opencl: bool = False, **eedi3_args: Any) -> Callable[..., vs.VideoNode]:
+def get_eedi3(
+    opencl: bool = False,
+    eedi3_core: Optional[str] = None,
+    device: Optional[int] = None,
+    **eedi3_args: Any
+) -> Callable[..., vs.VideoNode]:
     args = dict(alpha=0.25, beta=0.25, gamma=40, nrad=2, mdis=20, vthresh0=12, vthresh1=24, vthresh2=4)
     args.update(eedi3_args)
-    return partial(core.eedi3m.EEDI3CL if opencl else core.eedi3m.EEDI3, **args)
+    return _EEDI3Dispatcher(eedi3_core, device, args)
 
 
 def get_eedi3cl(**eedi3_args) -> Callable[..., vs.VideoNode]:
-    return get_eedi3(opencl=True, **eedi3_args)
+    return get_eedi3(eedi3_core='vszipcl', **eedi3_args)
 
 
 def interpolate(
@@ -494,6 +735,8 @@ def daa_mod(
     clip: vs.VideoNode,
     ref: Optional[vs.VideoNode] = None,
     opencl: bool = False,
+    nnedi3_core: Optional[str] = None,
+    device: Optional[int] = None,
     b: float = 1,
     rep1: int = 0,
     px1: Optional[float] = None,
@@ -504,7 +747,7 @@ def daa_mod(
     Modified from `havsfunc.daa` reducing its default strength. \\
     Sometimes it fixes residual interlacing (with some detail loss). Try `ref=TFM(PP=5)`.
     '''
-    nnedi3 = get_nnedi3(opencl=opencl)
+    nnedi3 = get_nnedi3(opencl=opencl, nnedi3_core=nnedi3_core, device=device)
     nn = nnedi3(clip, field=3)
     nn0 = repair(nn[0::2], clip, mode=rep1, pixel=px1)
     nn1 = repair(nn[1::2], clip, mode=rep1, pixel=px1)

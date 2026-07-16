@@ -1,13 +1,72 @@
+import vapoursynth as vs
 from vapoursynth import core
 from muvsfunc import SSIM_downsample
 
 
 __version__ = "k.1.1.0"
+_NNEDI3_CORE_ORDER = ('nnedi3vk', 'nnedi3cl', 'znedi3')
+_NNEDI3_ALLOWED = {
+    'nnedi3vk': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device_index', 'list_device', 'num_streams'},
+    'nnedi3cl': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'device', 'list_device', 'info'},
+    'znedi3': {'field', 'dh', 'planes', 'nsize', 'nns', 'qual', 'etype', 'pscrn', 'opt', 'int16_prescreener', 'int16_predictor', 'exp', 'show_mask'},
+}
+
+
+def _normalize_nnedi3_core(preferred):
+    if preferred is None:
+        return None
+
+    aliases = {
+        'auto': None,
+        'default': None,
+        'nnedi3vk': 'nnedi3vk',
+        'vk': 'nnedi3vk',
+        'nnedi3cl': 'nnedi3cl',
+        'cl': 'nnedi3cl',
+        'znedi3': 'znedi3',
+        'cpu': 'znedi3',
+        'nnedi3': 'znedi3',
+    }
+    key = preferred.lower()
+    if key not in aliases:
+        raise ValueError(f'nnedi3_rpow2: unsupported nnedi3_core={preferred!r}')
+    return aliases[key]
+
+
+def _ordered_nnedi3_cores(preferred):
+    preferred = _normalize_nnedi3_core(preferred)
+    if preferred is None:
+        return list(_NNEDI3_CORE_ORDER)
+    return [preferred] + [name for name in _NNEDI3_CORE_ORDER if name != preferred]
+
+
+def _call_nnedi3(clip, nnedi3_core=None, device=None, **kwargs):
+    errors = []
+
+    for name in _ordered_nnedi3_cores(nnedi3_core):
+        try:
+            if name == 'nnedi3vk':
+                call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+                if device is not None and 'device_index' not in call_kwargs:
+                    call_kwargs['device_index'] = device
+                return core.nnedi3vk.NNEDI3(clip, **call_kwargs)
+            if name == 'nnedi3cl':
+                call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+                if device is not None and 'device' not in call_kwargs:
+                    call_kwargs['device'] = device
+                return core.nnedi3cl.NNEDI3CL(clip, **call_kwargs)
+
+            call_kwargs = {key: value for key, value in kwargs.items() if key in _NNEDI3_ALLOWED[name] and value is not None}
+            return core.znedi3.nnedi3(clip, **call_kwargs)
+        except (AttributeError, RuntimeError, vs.Error) as exc:
+            errors.append(f'{name}: {exc}')
+
+    raise RuntimeError('nnedi3_rpow2: no nnedi3 backend could be initialized (' + '; '.join(dict.fromkeys(errors)) + ')')
 
 
 def nnedi3_rpow2(clip, rfactor=2, width=None, height=None, correct_shift=True,
                  kernel="SSIM", nsize=0, nns=3, qual=None, etype=None, pscrn=None,
-                 opt=True, int16_prescreener=None, int16_predictor=None, exp=None, upsizer=None):
+                 opt=True, int16_prescreener=None, int16_predictor=None, exp=None, upsizer=None, device=None, nnedi3_core=None):
     """nnedi3_rpow2 is for enlarging images by powers of 2.
 
     Args:
@@ -25,8 +84,9 @@ def nnedi3_rpow2(clip, rfactor=2, width=None, height=None, correct_shift=True,
             spline36 is the default one.
         nnedi3_args (mixed): For help with nnedi3 args
             refert to nnedi3 documentation.
-        upsizer (string): Which implementation to use: nnedi3, znedi3 or nnedi3cl.
-            If not selected the fastest available one will be chosen.
+        upsizer (string): Legacy alias of nnedi3_core.
+        nnedi3_core (string): Preferred implementation order anchor:
+            nnedi3vk, nnedi3cl or znedi3.
     """
 
     if width is None:
@@ -60,29 +120,14 @@ def nnedi3_rpow2(clip, rfactor=2, width=None, height=None, correct_shift=True,
 
     if tmp != rfactor:
         raise ValueError("nnedi3_rpow2: rfactor must be a power of 2.")
-
-    if hasattr(core, "nnedi3cl") is True and (upsizer is None or upsizer == "nnedi3cl"):
-        nnedi3 = core.nnedi3cl.NNEDI3CL
-    elif hasattr(core, "znedi3") is True and (upsizer is None or upsizer == "znedi3"):
-        nnedi3 = core.znedi3.nnedi3
-        pkdnnedi.update(
-            opt=opt,
-            int16_prescreener=int16_prescreener,
-            int16_predictor=int16_predictor,
-            exp=exp,
-        )
-    elif hasattr(core, "nnedi3") is True and (upsizer is None or upsizer == "nnedi3"):
-        nnedi3 = core.nnedi3.nnedi3
-        pkdnnedi.update(
-            opt=opt,
-            int16_prescreener=int16_prescreener,
-            int16_predictor=int16_predictor,
-            exp=exp,
-        )
-    else:
-        if upsizer is not None:
-            print(f"nnedi3_rpow2: You chose \"{upsizer}\" but it cannot be found.")
-        raise RuntimeError("nnedi3_rpow2: nnedi3/znedi3/nnedi3cl plugin is required.")
+    if nnedi3_core is None:
+        nnedi3_core = upsizer
+    pkdnnedi.update(
+        opt=opt,
+        int16_prescreener=int16_prescreener,
+        int16_predictor=int16_predictor,
+        exp=exp,
+    )
 
     if correct_shift or clip.format.subsampling_h:
         if hasattr(core, "fmtc") is not True:
@@ -92,7 +137,7 @@ def nnedi3_rpow2(clip, rfactor=2, width=None, height=None, correct_shift=True,
 
     for i in range(times):
         field = 1 if i == 0 else 0
-        last = nnedi3(last, field=field, **pkdnnedi)
+        last = _call_nnedi3(last, nnedi3_core=nnedi3_core, device=device, field=field, **pkdnnedi)
         last = core.std.Transpose(last)
         if last.format.subsampling_w:
             # Apparently always using field=1 for the horizontal pass somehow
@@ -101,7 +146,7 @@ def nnedi3_rpow2(clip, rfactor=2, width=None, height=None, correct_shift=True,
             hshift = hshift * 2 - 0.5
         else:
             hshift = -0.5
-        last = nnedi3(last, field=field, **pkdnnedi)
+        last = _call_nnedi3(last, nnedi3_core=nnedi3_core, device=device, field=field, **pkdnnedi)
         last = core.std.Transpose(last)
 
     if clip.format.subsampling_h:
