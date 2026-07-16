@@ -7250,7 +7250,7 @@ def _set_mv_kernel_signature(wrapper, reference) -> None:
     signature = inspect.signature(reference)
     parameters = list(signature.parameters.values())
     parameters.append(
-        inspect.Parameter("mv_kernel", inspect.Parameter.KEYWORD_ONLY, default="mvu")
+        inspect.Parameter("mv_kernel", inspect.Parameter.KEYWORD_ONLY, default="mv")
     )
     wrapper.__signature__ = signature.replace(parameters=parameters)
 
@@ -7899,28 +7899,28 @@ def _SMDegrain_mvu(input, tr=2, thSAD=300, thSADC=None, RefineMotion=False, cont
     return input
 
 
-def QTGMC_MakeLossless(*args, mv_kernel="mvu", **kwargs):
+def QTGMC_MakeLossless(*args, mv_kernel="mv", **kwargs):
     _validate_mv_kernel("QTGMC_MakeLossless", mv_kernel)
     if mv_kernel == "mv":
         return _legacy_QTGMC_MakeLossless(*args, **kwargs)
     return _QTGMC_MakeLossless_mvu(*args, **kwargs)
 
 
-def QTGMC_ApplySourceMatch(*args, mv_kernel="mvu", **kwargs):
+def QTGMC_ApplySourceMatch(*args, mv_kernel="mv", **kwargs):
     _validate_mv_kernel("QTGMC_ApplySourceMatch", mv_kernel)
     if mv_kernel == "mv":
         return _legacy_QTGMC_ApplySourceMatch(*args, **kwargs)
     return _QTGMC_ApplySourceMatch_mvu(*args, **kwargs)
 
 
-def QTGMC(*args, mv_kernel="mvu", **kwargs):
+def QTGMC(*args, mv_kernel="mv", **kwargs):
     _validate_mv_kernel("QTGMC", mv_kernel)
     if mv_kernel == "mv":
         return _legacy_QTGMC(*args, **kwargs)
     return _QTGMC_mvu(*args, **kwargs)
 
 
-def Stab(clp, dxmax=4, dymax=4, mirror=0, mv_kernel="mvu"):
+def Stab(clp, dxmax=4, dymax=4, mirror=0, mv_kernel="mv"):
     _validate_mv_kernel("Stab", mv_kernel)
     if mv_kernel == "mv":
         return _legacy_Stab(clp, dxmax=dxmax, dymax=dymax, mirror=mirror)
@@ -7930,7 +7930,7 @@ def Stab(clp, dxmax=4, dymax=4, mirror=0, mv_kernel="mvu"):
 def MCTemporalDenoise(i, radius=None, pfMode=3, sigma=None, twopass=None, useTTmpSm=False, limit=None, limit2=None, post=0, chroma=None, refine=False, deblock=False, useQED=None, quant1=None,
                       quant2=None, edgeclean=False, ECrad=None, ECthr=None, stabilize=None, maxr=None, TTstr=None, bwbh=None, owoh=None, blksize=None, overlap=None, bt=None, ncpu=1, thSAD=None,
                       thSADC=None, thSAD2=None, thSADC2=None, thSCD1=None, thSCD2=None, truemotion=False, MVglobal=True, pel=None, pelsearch=None, search=4, searchparam=2, MVsharp=None, DCT=0, p=None,
-                      settings="low", mv_kernel="mvu"):
+                      settings="low", mv_kernel="mv"):
     _validate_mv_kernel("MCTemporalDenoise", mv_kernel)
     if mv_kernel == "mv":
         return _legacy_MCTemporalDenoise(i, radius=radius, pfMode=pfMode, sigma=sigma, twopass=twopass, useTTmpSm=useTTmpSm, limit=limit, limit2=limit2, post=post, chroma=chroma, refine=refine, deblock=deblock,
@@ -7945,7 +7945,7 @@ def MCTemporalDenoise(i, radius=None, pfMode=3, sigma=None, twopass=None, useTTm
 
 def SMDegrain(input, tr=2, thSAD=300, thSADC=None, RefineMotion=False, contrasharp=None, CClip=None, interlaced=False, tff=None, plane=4, Globals=0, pel=None, subpixel=2, prefilter=-1, mfilter=None,
               blksize=None, overlap=None, search=4, truemotion=None, MVglobal=None, dct=0, limit=255, limitc=None, thSCD1=400, thSCD2=130, chroma=True, hpad=None, vpad=None, Str=1.0, Amp=0.0625,
-              mv_kernel="mvu"):
+              mv_kernel="mv"):
     _validate_mv_kernel("SMDegrain", mv_kernel)
     if mv_kernel == "mv":
         return _legacy_SMDegrain(input, tr=tr, thSAD=thSAD, thSADC=thSADC, RefineMotion=RefineMotion, contrasharp=contrasharp, CClip=CClip, interlaced=interlaced, tff=tff, plane=plane, Globals=Globals,

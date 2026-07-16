@@ -1196,7 +1196,7 @@ def _TAAmbk_mvu(clip, aatype=1, aatypeu=None, aatypev=None, preaa=0, strength=0.
     return final_output
 
 
-def temporal_stabilize(clip, src, delta=3, pel=1, retain=0.6, mv_kernel="mvu"):
+def temporal_stabilize(clip, src, delta=3, pel=1, retain=0.6, mv_kernel="mv"):
     _validate_mv_kernel("temporal_stabilize", mv_kernel)
     if mv_kernel == "mv":
         return _legacy_temporal_stabilize(clip, src, delta=delta, pel=pel, retain=retain)
@@ -1207,7 +1207,7 @@ def TAAmbk(clip, aatype=1, aatypeu=None, aatypev=None, preaa=0, strength=0.0, cy
            mthr=None, mlthresh=None, mpand=(0, 0), txtmask=0, txtfade=0, thin=0, dark=0.0, sharp=0,
            aarepair=0, postaa=None, src=None, stabilize=0, down8=True, showmask=0,
            opencl=False, opencl_device=-1, cuda=False, cuda_num_streams=1, cuda_device=-1, cuda_faster=False,
-           mv_kernel="mvu", **kwargs):
+           mv_kernel="mv", **kwargs):
     _validate_mv_kernel("TAAmbk", mv_kernel)
     if mv_kernel == "mv":
         return _legacy_TAAmbk(clip, aatype=aatype, aatypeu=aatypeu, aatypev=aatypev, preaa=preaa, strength=strength, cycle=cycle, mtype=mtype, mclip=mclip,
