@@ -11,7 +11,7 @@ license = { text = "Mixed upstream licensing; see THIRD_PARTY.md and scripts/*/p
 license-files = ["THIRD_PARTY.md", "scripts/**/COPYING", "scripts/**/LICENSE*"]
 requires-python = ">=3.12"
 authors = [{ name = "RyougiKukoc" }]
-dependencies = ["VapourSynth>=77", "vsutil>=0.8.0", "matplotlib>=3.8"]
+dependencies = ["matplotlib>=3.8"]
 
 [project.urls]
 "Source Code" = "https://github.com/RyougiKukoc/VapourSynth-Scripts-Collection"

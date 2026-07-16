@@ -82,8 +82,9 @@ For the exact per-script links and revisions, see [SOURCES.md](./SOURCES.md).
 
 ## Dependency Notes
 
-`vs-collection-rk` installs `VapourSynth`, `vsutil`, and `matplotlib`
-automatically, because some bundled modules import them at module import time.
+`vs-collection-rk` currently declares only `matplotlib` as a packaging
+dependency. Runtime libraries such as `VapourSynth` and `vsutil` are expected
+to be provided by the target environment when a bundled script imports them.
 
 `mvsfunc` is bundled directly inside this collection rather than being pulled as
 an external dependency. This keeps `pip install "vs-collection-rk @ git+..."`
