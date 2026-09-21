@@ -79,6 +79,10 @@ def bic_blur(clip: vs.VideoNode, b: float = 1, it: int = 1) -> vs.VideoNode:
     ret = clip
     for _ in range(it):
         ret = blur_ker(ret)
+    # fmtc.resample refuses to output below 16 bit, so an 8/10/12/14-bit input comes back as 16 bit.
+    # Convert back once after the loop, so it > 1 keeps the intermediate precision.
+    if ret.format.id != clip.format.id:
+        ret = core.resize.Bicubic(ret, format=clip.format, dither_type="ordered")
     return ret
 
 
