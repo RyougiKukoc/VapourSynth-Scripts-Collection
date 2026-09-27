@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vs-collection-rk"
-version = "0.2.0"
+version = "0.3.0"
 description = "Curated VapourSynth script collection with preserved per-script provenance"
 readme = "README.md"
 license = { text = "Mixed upstream licensing; see THIRD_PARTY.md and scripts/*/provenance.toml." }
 license-files = ["THIRD_PARTY.md", "scripts/**/COPYING", "scripts/**/LICENSE*"]
 requires-python = ">=3.12"
 authors = [{ name = "RyougiKukoc" }]
-dependencies = ["matplotlib>=3.8"]
+dependencies = []
 
 [project.urls]
 "Source Code" = "https://github.com/RyougiKukoc/VapourSynth-Scripts-Collection"
