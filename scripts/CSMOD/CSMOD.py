@@ -24,6 +24,20 @@ class _CoreProxy:
 _core = _CoreProxy()
 
 
+# tcanny r12 exposed `gmmax` (default 50) and scaled the mode=1 gradient by
+# 255/gmmax; r13 renamed it to `scale`, moved that multiply into detectEdge and
+# changed the default to 1.0, so the tcanny edgemasks below silently lost a 5.1x
+# gain. Ask the plugin which generation it is and pin the r12 default back.
+_LEGACY_GMMAX = 50
+
+
+def _tcanny_scale_kwargs(canny):
+    signature = getattr(getattr(canny, 'func', canny), 'signature', '')
+    if 'gmmax' in signature:
+        return {'gmmax': _LEGACY_GMMAX}
+    return {'scale': 255 / _LEGACY_GMMAX}
+
+
 def _normalize_nnedi3_core(preferred):
     if preferred is None:
         return None
@@ -627,6 +641,7 @@ def CSMOD(filtered, **args):
             tcanny = core.tcanny.TCanny
     else:
         tcanny = core.tcanny.TCanny
+    tcanny_scale = _tcanny_scale_kwargs(tcanny)
 
     # Avisynth Function: Spline
     def Spline(x, x1, y1, x2, y2, x3, y3, cubic=True):
@@ -943,7 +958,7 @@ def CSMOD(filtered, **args):
             edgemask = core.rgvs.RemoveGrain(edgemask, [20 if HD else 11] if GRAYS else [20 if HD else 11,0])
         # -5: Same as mtype=5 in TAA(tcanny)
         elif edgemask == -5:
-            edgemask = tcanny(srcfinal8, sigma=tcannysigma, mode=1, planes=0)
+            edgemask = tcanny(srcfinal8, sigma=tcannysigma, mode=1, planes=0, **tcanny_scale)
             mt = "x " + str(edgethr) + " <= x 2 / x 2 * ?"
             edgemask = core.std.Expr(edgemask, [mt] if GRAYS else [mt, ""])
             edgemask = core.rgvs.RemoveGrain(edgemask, [20 if HD else 11] if GRAYS else [20 if HD else 11,0])
@@ -954,7 +969,7 @@ def CSMOD(filtered, **args):
             edgemask = core.rgvs.RemoveGrain(edgemask, [20 if HD else 11] if GRAYS else [20 if HD else 11,0])
         # -7: My own method of tcanny usage of AA mask
         elif edgemask <= -7:
-            edgemask = tcanny(srcfinal8, sigma=tcannysigma, mode=1, planes=0)
+            edgemask = tcanny(srcfinal8, sigma=tcannysigma, mode=1, planes=0, **tcanny_scale)
             mt = "x " + str(edgethr) + " <= 0 x " + str(edgethr) + " - 64 * ?"
             edgemask = core.std.Expr(edgemask, [mt] if GRAYS else [mt, ""])
             edgemask = core.rgvs.RemoveGrain(edgemask, [20 if HD else 11] if GRAYS else [20 if HD else 11, 0])
@@ -996,7 +1011,7 @@ def CSMOD(filtered, **args):
             edgemask = core.rgvs.RemoveGrain(edgemask, [20 if HD else 11] if GRAYS else [20 if HD else 11, 0])
         # 5: tcanny mask(less sensitive to noise)
         elif edgemask == 5:
-            edgemask = tcanny(srcfinal8, sigma=tcannysigma, mode=1, planes=0)
+            edgemask = tcanny(srcfinal8, sigma=tcannysigma, mode=1, planes=0, **tcanny_scale)
             mt = "x " + str(edgethr * 0.5) + " <= 0 x " + str(edgethr * 0.5) + " - 2.4 pow ?"
             edgemask = core.std.Expr(edgemask, [mt] if GRAYS else [mt, ""])
             edgemask = core.rgvs.RemoveGrain(edgemask, [20 if HD else 11] if GRAYS else [20 if HD else 11, 0])

@@ -229,6 +229,19 @@ def squaremask(clip: vs.VideoNode, width: int, height: int, offset_x: int, offse
     return center * clip.num_frames
 
 
+# tcanny r12 exposed `gmmax` (default 50) and scaled the mode=1 gradient by
+# 255/gmmax; r13 renamed it to `scale`, moved that multiply into detectEdge and
+# changed the default to 1.0, so this filter silently lost a 5.1x gain.
+# Ask the plugin which generation it is and pin the r12 default back.
+_LEGACY_GMMAX = 50
+
+
+def _tcanny_scale_kwargs():
+    if 'gmmax' in core.tcanny.TCanny.signature:
+        return {'gmmax': _LEGACY_GMMAX}
+    return {'scale': 255 / _LEGACY_GMMAX}
+
+
 def retinex_edgemask(src: vs.VideoNode, sigma=1) -> vs.VideoNode:
     """
     Use retinex to greatly improve the accuracy of the edge detection in dark scenes.
@@ -237,7 +250,8 @@ def retinex_edgemask(src: vs.VideoNode, sigma=1) -> vs.VideoNode:
     luma = get_y(src)
     max_value = 1 if src.format.sample_type == vs.FLOAT else (1 << get_depth(src)) - 1
     ret = core.retinex.MSRCP(luma, sigma=[50, 200, 350], upper_thr=0.005)
-    tcanny = ret.tcanny.TCanny(mode=1, sigma=sigma).std.Minimum(coordinates=[1, 0, 1, 0, 0, 1, 0, 1])
+    tcanny = ret.tcanny.TCanny(mode=1, sigma=sigma, **_tcanny_scale_kwargs())
+    tcanny = tcanny.std.Minimum(coordinates=[1, 0, 1, 0, 0, 1, 0, 1])
     return core.std.Expr([kirsch(luma), tcanny], f'x y + {max_value} min')
 
 

@@ -52,6 +52,21 @@ def _filter_kwargs(kwargs, allowed):
     return {key: value for key, value in kwargs.items() if key in allowed and value is not None}
 
 
+# tcanny r12 exposed `gmmax` (default 50) and multiplied the mode=1 gradient by
+# 255/gmmax at output time. r13 renamed it to `scale`, moved that multiply into
+# detectEdge and changed the default to 1.0, so any filter that never passed the
+# parameter silently lost a 5.1x gain. Ask the plugin which generation it is and
+# pin the r12-default scaling back on the `scale` one.
+_LEGACY_GMMAX = 50
+
+
+def _gradient_scale_kwargs(canny, kwargs, gmmax_default):
+    signature = getattr(getattr(canny, 'func', canny), 'signature', '')
+    if 'gmmax' in signature:
+        return {'gmmax': kwargs.get('gmmax', gmmax_default)}
+    return {'scale': kwargs.get('scale', 255 / gmmax_default)}
+
+
 def _get_rgvs_namespace():
     try:
         return vs.core.rgvs
@@ -484,10 +499,7 @@ def mask_sobel(mthr, opencl=False, opencl_device=-1, **kwargs):
         't_l': kwargs.get('t_l', 1.0),
     }
 
-    if canny.signature.find('gmmax') >= 0:
-        mask_kwargs['gmmax'] = kwargs.get('gmmax', max(1, min(255, mthr)))
-    else:
-        mask_kwargs['scale'] = kwargs.get('scale', 255 / max(1, min(255, mthr)))
+    mask_kwargs.update(_gradient_scale_kwargs(canny, kwargs, max(1, min(255, mthr))))
 
     return lambda clip: canny(clip, mode=1, op=2, **mask_kwargs)
 
@@ -521,6 +533,7 @@ def mask_canny_continuous(mthr, opencl=False, opencl_device=-1, **kwargs):
         't_h': kwargs.get('t_h', 8.0),
         't_l': kwargs.get('t_l', 1.0),
     }
+    mask_kwargs.update(_gradient_scale_kwargs(canny, kwargs, _LEGACY_GMMAX))
     return lambda clip: _removegrain(
         canny(clip, mode=1, **mask_kwargs).std.Expr('x %d <= x 2 / x 2 * ?' % mthr),
         20 if clip.width > 1100 else 11
@@ -1038,6 +1051,7 @@ def _mask_canny_continuous_mvu(mthr, opencl=False, opencl_device=-1, **kwargs):
         "t_h": kwargs.get("t_h", 8.0),
         "t_l": kwargs.get("t_l", 1.0),
     }
+    mask_kwargs.update(_gradient_scale_kwargs(canny, kwargs, _LEGACY_GMMAX))
     return lambda clip: _removegrain(canny(clip, mode=1, **mask_kwargs).std.Expr("x %d <= x 2 / x 2 * ?" % mthr), 20 if clip.width > 1100 else 11)
 
 
